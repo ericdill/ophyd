@@ -26,8 +26,8 @@ def multi_pseudo():
     real2 = EpicsMotor(config.motor_recs[2], name='real2')
 
     logger.info('------- Sequential pseudo positioner')
-    pos = PseudoPositioner('seq',
-                           [real0, real1, real2],
+    pos = PseudoPositioner([real0, real1, real2],
+                           name='seq',
                            forward=calc_fwd, reverse=calc_rev,
                            pseudo=['pseudo0', 'pseudo1', 'pseudo2'],
                            concurrent=False
@@ -48,8 +48,8 @@ def multi_pseudo():
 
         # Create another one and give that a try
 
-    pos = PseudoPositioner('conc',
-                           [real0, real1, real2],
+    pos = PseudoPositioner([real0, real1, real2],
+                           name='conc',
                            forward=calc_fwd, reverse=calc_rev,
                            pseudo=['pseudo0', 'pseudo1', 'pseudo2'],
                            concurrent=True
@@ -124,8 +124,8 @@ def single_pseudo():
     reals = [real0, real1, real2]
 
     logger.info('------- Sequential, single pseudo positioner')
-    pos = PseudoPositioner('seq',
-                           reals,
+    pos = PseudoPositioner(reals,
+                           name='seq',
                            forward=calc_fwd, reverse=calc_rev,
                            concurrent=False
                            )

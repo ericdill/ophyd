@@ -106,14 +106,14 @@ class PseudoPositioner(Positioner):
     pseudo : list of strings, optional
         List of pseudo positioner names
     '''
-    def __init__(self, name, positioners,
+    def __init__(self, positioners,
                  forward=None,
                  reverse=None,
                  concurrent=True,
                  pseudo=None,
                  **kwargs):
 
-        Positioner.__init__(self, name=name, **kwargs)
+        Positioner.__init__(self, **kwargs)
 
         if forward is not None:
             if not callable(forward):
