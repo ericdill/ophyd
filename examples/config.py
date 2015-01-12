@@ -53,7 +53,9 @@ logger = logging.getLogger(EXAMPLE_LOGGER)
 
 session = ophyd.get_session_manager()
 
-session.cas.prefix = 'XF:31IDA-BI{OPHYD_EXAMPLE}'
+if session.cas is not None:
+    session.cas.prefix = 'XF:31IDA-BI{OPHYD_EXAMPLE}'
+    print('EPICS channel access server prefix set to: %s' % session.cas.prefix)
 
 setup_epics()
 
