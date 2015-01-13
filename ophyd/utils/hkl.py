@@ -534,7 +534,7 @@ class Engine(object):
 
     def _repr_info(self):
         repr = ['parameters={!r}'.format(self.parameters),
-                'pseudo_axis_values={!r}'.format(self.pseudo_axis_values),
+                'pseudo_axes={!r}'.format(dict(self.pseudo_axes)),
                 'mode={!r}'.format(self.mode),
                 'modes={!r}'.format(self.modes),
                 'units={!r}'.format(self.units),
@@ -722,7 +722,7 @@ class RecipCalc(object):
             self._engine[axis] = value
 
     def calc(self, position, engine=None,
-             use_first=True):
+             use_first=False):
         # TODO default should probably not be `use_first` (or remove
         # completely?)
         with self.using_engine(engine):
@@ -778,9 +778,13 @@ class RecipCalc(object):
             if positions.ndim == 1 and positions.size == num_params:
                 # single position
                 return [list(positions)]
-            elif (positions.ndim == 2) and (positions.shape[0] == num_params):
-                # [[h, k, l], [h, k, l], ...]
-                return [positions[i, :] for i in range(num_params)]
+            elif positions.ndim == 2:
+                if positions.shape[0] == 1 and positions.size == num_params:
+                    # [[h, k, l], ]
+                    return [positions[0]]
+                elif positions.shape[0] == num_params:
+                    # [[h, k, l], [h, k, l], ...]
+                    return [positions[i, :] for i in range(num_params)]
 
         raise ValueError('Invalid set of %s positions' %
                             ', '.join(self.pseudo_axis_names))

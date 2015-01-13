@@ -1,5 +1,6 @@
+from __future__ import print_function
 from ophyd.utils.hkl import RecipCalc, hkl_module
-
+from pprint import pprint
 
 def test():
     k6c = RecipCalc('K6C', engine='hkl')
@@ -55,16 +56,29 @@ def test():
     print('lattice=%s reciprocal=%s' % (sample.lattice, sample.reciprocal))
     print('main_sample=%s' % sample)
     # print(k6c)
-    print(k6c.engine)
+    print()
+    print('current engine is', k6c.engine)
+    print('available engines', end=': ')
+    pprint(k6c.engines)
 
+    print('hkl mode is %s (can be: %s)' % (k6c.engine.mode, k6c.engine.modes))
     print('* single position')
-    print(list(k6c([0, 1, 0])))
+    list(k6c([0, 1, 0]))
 
     print('* 10 positions between two hkls')
-    print(list(k6c([0, 1, 0], [0, 1, 0.1], n=10)))
+    for solutions in k6c([0, 1, 0], [0, 1, 0.1], n=10):
+        print('choosing', solutions[0], 'of %d solutions' % len(solutions))
+        solutions[0].select()
 
     print('* 3 specific hkls')
-    print(list(k6c([[0, 1, 0], [0, 1, 0.01], [0, 1, 0.02]])))
+    list(k6c([[0, 1, 0], [0, 1, 0.01], [0, 1, 0.02]]))
+
+    q2_recip = RecipCalc('K6C', engine='q2')
+    print('q is', q2_recip['q'])
+    print('alpha is', q2_recip['alpha'])
+    assert(len(list(q2_recip([[1, 2], ]))) == 1)
+    assert(len(list(q2_recip([[1, 2], [3, 4]]))) == 2)
+    assert(len(list(q2_recip([1, 2], [3, 4], n=20))) == 21)
     return k6c
 
 if __name__ == '__main__':
