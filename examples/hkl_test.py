@@ -57,6 +57,14 @@ def test():
     # print(k6c)
     print(k6c.engine)
 
+    print('* single position')
+    print(list(k6c([0, 1, 0])))
+
+    print('* 10 positions between two hkls')
+    print(list(k6c([0, 1, 0], [0, 1, 0.1], n=10)))
+
+    print('* 3 specific hkls')
+    print(list(k6c([[0, 1, 0], [0, 1, 0.01], [0, 1, 0.02]])))
     return k6c
 
 if __name__ == '__main__':

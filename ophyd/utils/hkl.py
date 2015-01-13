@@ -743,57 +743,55 @@ class RecipCalc(object):
     def using_engine(self, engine):
         return UsingEngine(self, engine)
 
-    def _interpret_start_end(self, start, end, n=100):
+    def calc_linear_path(self, start, end, n, num_params=0, **kwargs):
+        # start = [h1, k1, l1]
+        # end   = [h2, k2, l2]
+
+        # from start to end, in a linear path
+        singles = [np.linspace(start[i], end[i], n + 1)
+                   for i in range(num_params)]
+
+        return list(zip(*singles))
+
+    def _get_path_fcn(self, path_type):
+        try:
+            return getattr(self, 'calc_%s_path' % (path_type))
+        except AttributeError:
+            raise ValueError('Invalid path type specified (%s)' % path_type)
+
+    def get_path(self, start, end=None, n=100,
+                 path_type='linear', **kwargs):
         num_params = len(self.pseudo_axis_names)
 
         start = np.array(start)
 
+        path_fcn = self._get_path_fcn(path_type)
+
         if end is not None:
             end = np.array(end)
-
-            if start.size == end.size == 3:
-                # start= [h1, k1, l1]
-                # end  = [h2, k2, l2]
-
-                # from start to end, in a linear path
-                hs = np.linspace(start[0], end[0], n + 1)
-                ks = np.linspace(start[1], end[1], n + 1)
-                ls = np.linspace(start[2], end[2], n + 1)
-
-            else:
-                raise ValueError('Invalid start/end position')
+            if start.size == end.size == num_params:
+                return path_fcn(start, end, n, num_params=num_params,
+                                **kwargs)
 
         else:
-            hkls = np.array(start)
-            if hkls.ndim == 1 and hkls.size == 3:
-                # single h, k, l position
-                hs = [hkls[0]]
-                ks = [hkls[1]]
-                ls = [hkls[2]]
-            elif (hkls.ndim == 2) and (3 in hkls.shape):
-                if hkls.shape[0] == 3 or hkls.ndim == 1:
-                    # [[h, k, l], [h, k, l], ...]
-                    hs = hkls[:, 0]
-                    ks = hkls[:, 1]
-                    ls = hkls[:, 2]
-                else:
-                    # [[h, h, h, ...], [k, k, k, ...], [l, l, l, ...]]
-                    hs = hkls[0, :]
-                    ks = hkls[1, :]
-                    ls = hkls[2, :]
-            else:
-                raise ValueError('Invalid set of h, k, l positions')
+            positions = np.array(start)
+            if positions.ndim == 1 and positions.size == num_params:
+                # single position
+                return [list(positions)]
+            elif (positions.ndim == 2) and (positions.shape[0] == num_params):
+                # [[h, k, l], [h, k, l], ...]
+                return [positions[i, :] for i in range(num_params)]
 
-        return hs, ks, ls
+        raise ValueError('Invalid set of %s positions' %
+                            ', '.join(self.pseudo_axis_names))
 
     def __call__(self, start, end=None, n=100, engine=None,
-                 **kwargs):
-        with self.using_engine(engine):
-            hs, ks, ls = self._interpret_start_end(start, end=end, n=n)
+                 path_type='linear', **kwargs):
 
-            for h, k, l in zip(hs, ks, ls):
-                print('calc with', h, k, l)
-                yield self.calc((h, k, l), engine=None,
+        with self.using_engine(engine):
+            for pos in self.get_path(start, end=end, n=n,
+                                     path_type=path_type, **kwargs):
+                yield self.calc(pos, engine=None,
                                 **kwargs)
 
     def _repr_info(self):
