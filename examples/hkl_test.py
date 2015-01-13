@@ -8,23 +8,27 @@ def test():
     print(k6c['mu'])
     print(k6c[k6c.axis_names[0]].limits)
     print('1, 1, 1 -> ', list(k6c([1, 1, 1])))
-    refl = k6c.add_reflection(1, 1, 1)
-    k6c.remove_reflection(refl)
-    k6c.clear_reflections()
+
+    sample = k6c.sample
+    refl = sample.add_reflection(1, 1, 1)
+    sample.remove_reflection(refl)
+    sample.clear_reflections()
 
     lim = (0.0, 20.0)
     k6c['mu'].limits = lim
     print('mu limits', k6c['mu'].limits)
     assert(k6c['mu'].limits == lim)
 
-    k6c.add_reflection(1, 1, 1)
-    k6c.add_reflection(1, 0, 1)
-    k6c.add_reflection(1, 0, 0)
-    print(k6c.reflection_measured_angles)
-    print(k6c.reflection_theoretical_angles)
-    print(k6c.reflections)
+    sample.add_reflection(1, 1, 1)
+    sample.add_reflection(1, 0, 1)
+    sample.add_reflection(1, 0, 0)
+    print(sample.reflection_measured_angles)
+    print(sample.reflection_theoretical_angles)
+    print(sample.reflections)
 
-    k6c.add_sample('sample2')
+    k6c.sample.name = 'main_sample'
+
+    sample2 = k6c.add_sample('sample2')
     try:
         k6c.add_sample('sample2')
     except ValueError:
@@ -32,11 +36,15 @@ def test():
     else:
         raise Exception
 
-    k6c.sample = 'main'
+    k6c.sample = 'main_sample'
 
-    print('U=%s' % k6c.U)
-    print('UB=%s' % k6c.UB)
-    print('ux, uy, uz=%s, %s, %s' % (k6c.ux, k6c.uy, k6c.uz))
+    sample.U = [[1, 1, 1], [1, 0, 0], [1, 1, 0]]
+    print('U=%s' % sample.U)
+    # sample.UB = [[1, 1, 1], [1, 0, 0], [1, 1, 0]]
+    print('UB=%s' % sample.UB)
+    print('ux, uy, uz=%s, %s, %s' % (sample.ux, sample.uy, sample.uz))
+    print('lattice=%s reciprocal=%s' % (sample.lattice, sample.reciprocal))
+    print('main_sample=%s' % sample)
     return k6c
 
 if __name__ == '__main__':

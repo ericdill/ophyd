@@ -35,6 +35,9 @@ def new_detector(dtype=0):
 if hkl_module:
     DIFF_TYPES = tuple(sorted(hkl_module.factories().keys()))
     UserUnits = hkl_module.UnitEnum.USER
+    DefaultUnits = hkl_module.UnitEnum.DEFAULT
+
+    VALID_UNITS = (UserUnits, DefaultUnits)
 else:
     DIFF_TYPES = ()
 
@@ -71,6 +74,8 @@ def numpy_to_hkl_matrix(m):
     if isinstance(m, hkl_module.Matrix):
         return m
 
+    m = np.array(m)
+
     hklm = hkl_euler_matrix(0, 0, 0)
     hklm.init(*m.flatten())
     return hklm
@@ -80,10 +85,251 @@ def hkl_euler_matrix(euler_x, euler_y, euler_z):
     return hkl_module.Matrix.new_euler(euler_x, euler_y, euler_z)
 
 
-class HklParameter(object):
-    def __init__(self, calc, param, units=UserUnits):
+class HklSample(object):
+    def __init__(self, calc, sample=None, units=UserUnits,
+                 **kwargs):
+        if sample is None:
+            sample = hkl_module.Sample.new('')
+
         self._calc = calc
+        self._sample = sample
+        self._sample_dict = calc._samples
+        self._units = units
+
+        assert units in VALID_UNITS
+
+        for name in ('lattice', 'name', 'U', 'UB', 'ux', 'uy', 'uz',
+                     'reflections', ):
+            value = kwargs.pop(name, None)
+            if value is not None:
+                try:
+                    setattr(self, name, value)
+                except Exception as ex:
+                    ex.msg = '%s (attribute=%s)' % (ex, name)
+                    raise ex(ex.msg)
+
+        if kwargs:
+            raise ValueError('Unsupported kwargs for HklSample: %s' %
+                             tuple(kwargs.keys()))
+
+    @property
+    def hkl_calc(self):
+        '''
+        The HklCalc instance associated with the sample
+        '''
+        return self._calc
+
+    @property
+    def hkl_sample(self):
+        '''
+        The HKL library sample object
+        '''
+        return self._sample
+
+    @property
+    def name(self):
+        '''
+        The name of the currently selected sample
+        '''
+        return self._sample.name_get()
+
+    @name.setter
+    def name(self, new_name):
+        sample = self._sample
+        current = sample.name_get()
+        if new_name in self._sample_dict:
+            raise ValueError('Sample with that name already exists')
+
+        sample.name_set(new_name)
+
+        del self._sample_dict[current]
+        self._sample_dict[new_name] = self
+
+    def _set_lattice(self, sample, lattice):
+        if not isinstance(lattice, hkl_module.Lattice):
+            a, b, c, alpha, beta, gamma = lattice
+
+            lattice = hkl_module.Lattice.new(a, b, c, alpha, beta, gamma,
+                                             self._units)
+
+        sample.lattice_set(lattice)
+
+    @property
+    def reciprocal(self):
+        '''
+        The reciprocal lattice
+        '''
+        lattice = self._sample.lattice_get()
+        reciprocal = lattice.copy()
+        lattice.reciprocal(reciprocal)
+        return reciprocal.get(self._units)
+
+    @property
+    def lattice(self):
+        '''
+        The lattice
+        '''
+        lattice = self._sample.lattice_get()
+        lattice = lattice.get(self._units)
+
+        a, b, c, alpha, beta, gamma = lattice
+        return a, b, c, alpha, beta, gamma
+
+    @lattice.setter
+    def lattice(self, lattice):
+        self._set_lattice(self._sample, lattice)
+
+    @property
+    def U(self):
+        '''
+        The U matrix
+        '''
+        return hkl_matrix_to_numpy(self._sample.U_get())
+
+    @U.setter
+    def U(self, new_u):
+        self._sample.U_set(numpy_to_hkl_matrix(new_u))
+
+    def _get_hkl_parameter(self, param):
+        return HklParameter(param, units=self._units)
+
+    @property
+    def ux(self):
+        return self._get_hkl_parameter(self._sample.ux_get())
+
+    @property
+    def uy(self):
+        return self._get_hkl_parameter(self._sample.uy_get())
+
+    @property
+    def uz(self):
+        return self._get_hkl_parameter(self._sample.uz_get())
+
+    @property
+    def UB(self):
+        '''
+        The UB matrix
+        '''
+        return hkl_matrix_to_numpy(self._sample.UB_get())
+
+    @UB.setter
+    def UB(self, new_ub):
+        self._sample.UB_set(numpy_to_hkl_matrix(new_ub))
+
+    @property
+    def reflections(self):
+        '''
+        All reflections for the current sample in the form:
+            [(h, k, l), ...]
+        '''
+        return [refl.hkl_get() for refl in self._sample.reflections_get()]
+
+    @reflections.setter
+    def reflections(self, refls):
+        self.clear_reflections()
+        for refl in refls:
+            self.add_reflection(*refl)
+
+    def add_reflection(self, h, k, l, detector=None):
+        '''
+        Add a reflection, optionally specifying the detector to use
+        '''
+        if detector is None:
+            detector = self._calc._detector
+
+        return self._sample.add_reflection(self._calc._geometry, detector,
+                                           h, k, l)
+
+    def remove_reflection(self, refl):
+        '''
+        Remove a specific reflection
+        '''
+        if not isinstance(refl, hkl_module.SampleReflection):
+            index = self.reflections.index(refl)
+            refl = self._sample.reflections_get()[index]
+
+        return self._sample.del_reflection(refl)
+
+    def clear_reflections(self):
+        '''
+        Clear all reflections for the current sample
+        '''
+        reflections = self._sample.reflections_get()
+        for refl in reflections:
+            self._sample.del_reflection(refl)
+
+    def _refl_matrix(self, fcn):
+        '''
+        Get a reflection angle matrix
+        '''
+        sample = self._sample
+        refl = sample.reflections_get()
+        refl_matrix = np.zeros((len(refl), len(refl)))
+
+        for i, r1 in enumerate(refl):
+            for j, r2 in enumerate(refl):
+                if i != j:
+                    refl_matrix[i, j] = fcn(r1, r2)
+
+        return refl_matrix
+
+    @property
+    def reflection_measured_angles(self):
+        # TODO: typo bug report (mesured)
+        return self._refl_matrix(self._sample.get_reflection_mesured_angle)
+
+    @property
+    def reflection_theoretical_angles(self):
+        return self._refl_matrix(self._sample.get_reflection_theoretical_angle)
+
+    @property
+    def affine(self):
+        return self._sample.affine()
+
+    def _repr_info(self):
+        repr = ['name={!r}'.format(self.name),
+                'lattice={!r}'.format(self.lattice),
+                'ux={!r}'.format(self.ux),
+                'uy={!r}'.format(self.uy),
+                'uz={!r}'.format(self.uz),
+                'U={!r}'.format(self.U),
+                'UB={!r}'.format(self.UB),
+                'reflections={!r}'.format(self.reflections),
+                ]
+
+        return repr
+
+    def __repr__(self):
+        return '{}({})'.format(self.__class__.__name__,
+                               ', '.join(self._repr_info()))
+
+    def __str__(self):
+        info = self._repr_info()
+        info.append('reflection_measured_angles={!r}'.format(self.reflection_measured_angles))
+        info.append('reflection_theoretical_angles={!r}'.format(self.reflection_theoretical_angles))
+        return '{}({})'.format(self.__class__.__name__,
+                               ', '.join(info))
+
+
+class HklParameter(object):
+    def __init__(self, param, units=UserUnits):
         self._param = param
+        self._units = units
+
+    @property
+    def hkl_parameter(self):
+        '''
+        The HKL library parameter object
+        '''
+        return self._param
+
+    @property
+    def units(self):
+        return self._units
+
+    @units.setter
+    def units(self, units):
+        assert units in VALID_UNITS
         self._units = units
 
     @property
@@ -128,7 +374,7 @@ class HklParameter(object):
     def limits(self, (low, high)):
         self._param.min_max_set(low, high, self._units)
 
-    def __repr__(self):
+    def _repr_info(self):
         repr = ['name={!r}'.format(self.name),
                 'limits={!r}'.format(self.limits),
                 'value={!r}'.format(self.value),
@@ -140,8 +386,17 @@ class HklParameter(object):
         else:
             repr.append('units={!r}'.format(self.default_units))
 
+        return repr
+
+    def __repr__(self):
         return '{}({})'.format(self.__class__.__name__,
-                               ', '.join(repr))
+                               ', '.join(self._repr_info()))
+
+    def __str__(self):
+        info = self._repr_info()
+        # info.append(self.)
+        return '{}({})'.format(self.__class__.__name__,
+                               ', '.join(info))
 
 
 class HklCalc(object):
@@ -190,6 +445,12 @@ class HklCalc(object):
 
         self._re_init()
 
+    def _get_sample(self, name):
+        if isinstance(name, hkl_module.Sample):
+            return name
+
+        return self._samples[name]
+
     @property
     def sample_name(self):
         '''
@@ -200,14 +461,7 @@ class HklCalc(object):
     @sample_name.setter
     def sample_name(self, new_name):
         sample = self._sample
-        current = sample.name_get()
-        if new_name in self._samples:
-            raise ValueError('Sample with that name already exists')
-
-        sample.name_set(new_name)
-
-        del self._samples[current]
-        self._samples[new_name] = sample
+        sample.name = new_name
 
     @property
     def sample(self):
@@ -217,178 +471,42 @@ class HklCalc(object):
     def sample(self, sample):
         if sample is self._sample:
             return
+        elif sample == self._sample.name:
+            return
 
-        if isinstance(sample, hkl_module.Sample):
+        if isinstance(sample, HklSample):
             if sample not in self._samples.values():
-                self.add_sample(sample)
-            else:
-                self._sample = sample
-                self._re_init()
+                self.add_sample(sample, select=False)
         elif sample in self._samples:
             name = sample
-            self._sample = self._samples[name]
-            self._re_init()
+            sample = self._samples[name]
         else:
-            raise ValueError('Unknown sample type (expected Hkl.Sample)')
+            raise ValueError('Unknown sample type (expected HklSample)')
 
-    def add_sample(self, name, lattice=None, select=True):
+        self._sample = sample
+        self._re_init()
+
+    def add_sample(self, name, select=True,
+                   **kwargs):
         if isinstance(name, hkl_module.Sample):
+            sample = HklSample(self, name, units=self._units,
+                               **kwargs)
+        elif isinstance(name, HklSample):
             sample = name
-            name = sample.name_get()
         else:
-            sample = hkl_module.Sample.new(name)
+            sample = HklSample(self, sample=hkl_module.Sample.new(name),
+                               units=self._units,
+                               **kwargs)
 
-        if name in self._samples:
+        if sample.name in self._samples:
             raise ValueError('Sample of name "%s" already exists' % name)
 
-        self._samples[name] = sample
-
-        if lattice is not None:
-            self._set_lattice(sample, lattice)
-
+        self._samples[sample.name] = sample
         if select:
             self._sample = sample
             self._re_init()
 
         return sample
-
-    def _set_lattice(self, sample, lattice):
-        if not isinstance(lattice, hkl_module.Lattice):
-            a, b, c = lattice[:3]
-            angles = lattice[3:]
-            if self._degrees:
-                angles = [np.radians(angle) for angle in angles]
-
-            lattice = hkl_module.Lattice.new(a, b, c, angles[0], angles[1], angles[2],
-                                             self._units)
-
-        sample.lattice_set(lattice)
-
-    @property
-    def lattice(self):
-        lattice = self._sample.lattice_get(self._units)
-        a, b, c = lattice[:3]
-        angles = lattice[3:]
-        if self._degrees:
-            angles = [np.degrees(angle) for angle in angles]
-
-        return a, b, c, angles[0], angles[1], angles[2]
-
-    @lattice.setter
-    def lattice(self, lattice):
-        self._set_lattice(self._sample, lattice)
-
-    @property
-    def U(self):
-        '''
-        The U matrix
-        '''
-        return hkl_matrix_to_numpy(self._sample.U_get())
-
-    @U.setter
-    def U(self, new_u):
-        self._sample.U_set(numpy_to_hkl_matrix(new_u))
-
-    def _get_hkl_parameter(self, param):
-        return HklParameter(self, param, units=self._units)
-
-    @property
-    def ux(self):
-        return self._get_hkl_parameter(self._sample.ux_get())
-
-    @property
-    def uy(self):
-        return self._get_hkl_parameter(self._sample.uy_get())
-
-    @property
-    def uz(self):
-        return self._get_hkl_parameter(self._sample.uz_get())
-
-    @property
-    def UB(self):
-        '''
-        The UB matrix
-        '''
-        return hkl_matrix_to_numpy(self._sample.UB_get())
-
-    @UB.setter
-    def UB(self, new_ub):
-        self._sample.UB_set(numpy_to_hkl_matrix(new_ub))
-
-    @property
-    def reciprocal(self):
-        '''
-        The reciprocal lattice
-        '''
-        lattice = self._sample.lattice_get(self._units)
-        reciprocal = lattice.copy()
-        lattice.reciprocal(reciprocal)
-        return reciprocal
-
-    @property
-    def reflections(self):
-        '''
-        All reflections for the current sample in the form:
-            [(h, k, l), ...]
-        '''
-        return [refl.hkl_get() for refl in self._sample.reflections_get()]
-
-    @reflections.setter
-    def reflections(self, refls):
-        self.clear_reflections()
-        for refl in refls:
-            self.add_reflection(*refl)
-
-    def add_reflection(self, h, k, l, detector=None):
-        '''
-        Add a reflection, optionally specifying the detector to use
-        '''
-        if detector is None:
-            detector = self._detector
-
-        return self._sample.add_reflection(self._geometry, detector, h, k, l)
-
-    def remove_reflection(self, refl):
-        '''
-        Remove a specific reflection
-        '''
-        if not isinstance(refl, hkl_module.SampleReflection):
-            index = self.reflections.index(refl)
-            refl = self._sample.reflections_get()[index]
-
-        return self._sample.del_reflection(refl)
-
-    def clear_reflections(self):
-        '''
-        Clear all reflections for the current sample
-        '''
-        reflections = self._sample.reflections_get()
-        for refl in reflections:
-            self._sample.del_reflection(refl)
-
-    def _refl_matrix(self, fcn):
-        '''
-        Get a reflection angle matrix
-        '''
-        sample = self._sample
-        refl = sample.reflections_get()
-        refl_matrix = np.zeros((len(refl), len(refl)))
-
-        for i, r1 in enumerate(refl):
-            for j, r2 in enumerate(refl):
-                if i != j:
-                    refl_matrix[i, j] = fcn(r1, r2)
-
-        return refl_matrix
-
-    @property
-    def reflection_measured_angles(self):
-        # TODO: typo bug report (mesured)
-        return self._refl_matrix(self._sample.get_reflection_mesured_angle)
-
-    @property
-    def reflection_theoretical_angles(self):
-        return self._refl_matrix(self._sample.get_reflection_theoretical_angle)
 
     def _re_init(self):
         if self._engine is None:
@@ -398,7 +516,8 @@ class HklCalc(object):
             # raise ValueError('Not all parameters set (geometry, detector, sample)')
             pass
         else:
-            self._engine_list.init(self._geometry, self._detector, self._sample)
+            self._engine_list.init(self._geometry, self._detector,
+                                   self._sample.hkl_sample)
 
     @property
     def engines(self):
@@ -408,6 +527,9 @@ class HklCalc(object):
     @property
     def axis_names(self):
         return self._geometry.axes_names_get()
+
+    def _get_hkl_parameter(self, param):
+        return HklParameter(param, units=self._units)
 
     def __getitem__(self, axis):
         return self._get_hkl_parameter(self._geometry.axis_get(axis))
