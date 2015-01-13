@@ -9,6 +9,8 @@
 '''
 
 from __future__ import print_function
+from collections import OrderedDict
+
 import numpy as np
 
 import sys
@@ -105,8 +107,8 @@ class HklSample(object):
                 try:
                     setattr(self, name, value)
                 except Exception as ex:
-                    ex.msg = '%s (attribute=%s)' % (ex, name)
-                    raise ex(ex.msg)
+                    ex.message = '%s (attribute=%s)' % (ex, name)
+                    raise ex(ex.message)
 
         if kwargs:
             raise ValueError('Unsupported kwargs for HklSample: %s' %
@@ -154,6 +156,10 @@ class HklSample(object):
 
         sample.lattice_set(lattice)
 
+        # TODO: notes mention that lattice should not change, but is it alright
+        #       if init() is called again? or should reflections be cleared,
+        #       etc?
+
     @property
     def reciprocal(self):
         '''
@@ -190,20 +196,20 @@ class HklSample(object):
     def U(self, new_u):
         self._sample.U_set(numpy_to_hkl_matrix(new_u))
 
-    def _get_hkl_parameter(self, param):
-        return HklParameter(param, units=self._units)
+    def _get_parameter(self, param):
+        return Parameter(param, units=self._units)
 
     @property
     def ux(self):
-        return self._get_hkl_parameter(self._sample.ux_get())
+        return self._get_parameter(self._sample.ux_get())
 
     @property
     def uy(self):
-        return self._get_hkl_parameter(self._sample.uy_get())
+        return self._get_parameter(self._sample.uy_get())
 
     @property
     def uz(self):
-        return self._get_hkl_parameter(self._sample.uz_get())
+        return self._get_parameter(self._sample.uz_get())
 
     @property
     def UB(self):
@@ -311,7 +317,7 @@ class HklSample(object):
                                ', '.join(info))
 
 
-class HklParameter(object):
+class Parameter(object):
     def __init__(self, param, units=UserUnits):
         self._param = param
         self._units = units
@@ -399,7 +405,149 @@ class HklParameter(object):
                                ', '.join(info))
 
 
-class HklCalc(object):
+class Solution(object):
+    def __init__(self, engine, list_item):
+        self._list_item = list_item.copy()
+        self._geometry = list_item.geometry_get().copy()
+        self._engine = engine
+
+    def __getitem__(self, axis):
+        return self._geometry.axis_get(axis)
+
+    @property
+    def axis_names(self):
+        return self._geometry.axes_names_get()
+
+    @property
+    def axis_values(self):
+        return self._geometry.axes_values_get(self.units)
+
+    @property
+    def units(self):
+        return self._engine.units
+
+    def set_wavelength(self, wavelength):
+        # TODO
+        self._geometry.wavelength_set(wavelength)
+
+    def select(self):
+        self._engine._engine_list.select_solution(self._list_item)
+
+    def _repr_info(self):
+        repr = ['{!r}'.format(self.axis_values),
+                'units={!r}'.format(self.units),
+                ]
+
+        return repr
+
+    def __repr__(self):
+        return '{}({})'.format(self.__class__.__name__,
+                               ', '.join(self._repr_info()))
+
+
+class Engine(object):
+    def __init__(self, calc, engine, engine_list):
+        self._calc = calc
+        self._engine = engine
+        self._engine_list = engine_list
+        self._solutions = None
+
+    @property
+    def name(self):
+        return self._engine.name_get()
+
+    @property
+    def mode(self):
+        '''
+        HKL calculation mode (see also `HklCalc.modes`)
+        '''
+        return self._engine.current_mode_get()
+
+    @mode.setter
+    def mode(self, mode):
+        if mode not in self.modes:
+            raise ValueError('Unrecognized mode %r; '
+                             'choose from: %s' % (mode, ', '.join(self.modes))
+                             )
+
+        return self._engine.current_mode_set(mode)
+
+    @property
+    def modes(self):
+        return self._engine.modes_names_get()
+
+    @property
+    def solutions(self):
+        return tuple(self._solutions)
+
+    @property
+    def parameters(self):
+        return self._engine.parameters_names_get()
+
+    @property
+    def pseudo_axis_names(self):
+        return self._engine.pseudo_axes_names_get()
+
+    @property
+    def pseudo_axis_values(self):
+        return self._engine.pseudo_axes_values_get(self.units)
+
+    @property
+    def pseudo_axes(self):
+        keys = self.pseudo_axis_names
+        values = self.pseudo_axis_values
+        return OrderedDict(zip(keys, values))
+
+    @pseudo_axis_values.setter
+    def pseudo_axis_values(self, values):
+        try:
+            geometry_list = self._engine.pseudo_axes_values_set(values, self.units)
+        except GLib.GError as ex:
+            raise ValueError('Calculation failed (%s)' % ex)
+
+        self._solutions = [Solution(self, item)
+                           for item in geometry_list.items()]
+
+    def __getitem__(self, name):
+        try:
+            return self.pseudo_axes[name]
+        except KeyError:
+            raise ValueError('Unknown axis name: %s' % name)
+
+    def __setitem__(self, name, value):
+        values = self.pseudo_axis_values
+        try:
+            idx = self.pseudo_axis_names.index(name)
+        except IndexError:
+            raise ValueError('Unknown axis name: %s' % name)
+
+        values[idx] = float(value)
+        self.pseudo_axis_values = values
+
+    @property
+    def units(self):
+        return self._calc._units
+
+    @property
+    def engine(self):
+        return self._engine
+
+    def _repr_info(self):
+        repr = ['parameters={!r}'.format(self.parameters),
+                'pseudo_axis_values={!r}'.format(self.pseudo_axis_values),
+                'mode={!r}'.format(self.mode),
+                'modes={!r}'.format(self.modes),
+                'units={!r}'.format(self.units),
+                ]
+
+        return repr
+
+    def __repr__(self):
+        return '{}({})'.format(self.__class__.__name__,
+                               ', '.join(self._repr_info()))
+
+
+class RecipCalc(object):
     def __init__(self, dtype, engine='hkl',
                  sample='main', lattice=None,
                  degrees=True, units=UserUnits):
@@ -418,7 +566,6 @@ class HklCalc(object):
 
         self._geometry = self._factory.create_new_geometry()
         self._engine_list = self._factory.create_new_engine_list()
-        self._solutions = None
 
         if sample is not None:
             self.add_sample(sample, lattice=lattice)
@@ -521,65 +668,86 @@ class HklCalc(object):
 
     @property
     def engines(self):
-        return dict((engine.name_get(), engine)
+        return dict((engine.name_get(), Engine(self, engine, self._engine_list))
                     for engine in self._engine_list.engines_get())
 
     @property
-    def axis_names(self):
+    def parameters(self):
+        return self._engine.parameters
+
+    @property
+    def physical_axis_names(self):
         return self._geometry.axes_names_get()
 
-    def _get_hkl_parameter(self, param):
-        return HklParameter(param, units=self._units)
+    @property
+    def physical_axis_values(self):
+        return [self[name].value
+                for name in self._geometry.axes_names_get()]
+
+    @property
+    def physical_axes(self):
+        keys = self.physical_axis_names
+        values = self.physical_axis_values
+        return OrderedDict(zip(keys, values))
+
+    @property
+    def pseudo_axis_names(self):
+        '''Pseudo axis names from the current engine'''
+        return self._engine.pseudo_axis_names
+
+    @property
+    def pseudo_axis_values(self):
+        '''Pseudo axis positions/values from the current engine'''
+        return self._engine.pseudo_axis_values
+
+    @property
+    def pseudo_axes(self):
+        '''Dictionary of axis name to position'''
+        return self._engine.pseudo_axes
+
+    def _get_parameter(self, param):
+        return Parameter(param, units=self._units)
 
     def __getitem__(self, axis):
-        return self._get_hkl_parameter(self._geometry.axis_get(axis))
+        if axis in self.physical_axis_names:
+            return self._get_parameter(self._geometry.axis_get(axis))
+        elif axis in self.pseudo_axis_names:
+            return self._engine[axis]
 
-    def select_solution(self, sol):
-        if self._solutions is None:
-            raise RuntimeError('No calculation in progress')
+    def __setitem__(self, axis, value):
+        if axis in self.physical_axis_names:
+            param = self[axis]
+            param.value = value
+        elif axis in self.pseudo_axis_names:
+            self._engine[axis] = value
 
-        engine, user_sol, solutions = self._solutions
-        if sol in user_sol:
-            idx = user_sol.index(sol)
-            sol = solutions[idx]
-
-        engine.select_solution(sol)
-        self._solutions = None
-
-    def calc(self, h, k, l, engine=None,
+    def calc(self, position, engine=None,
              use_first=True):
+        # TODO default should probably not be `use_first` (or remove
+        # completely?)
         with self.using_engine(engine):
             if self.engine is None:
                 raise ValueError('Engine unset')
 
             engine = self.engine
-            try:
-                solutions = self.engine.pseudo_axes_values_set([h, k, l],
-                                                               self._units)
-            except GLib.GError as ex:
-                raise ValueError('Calculation failed (%s)' % ex)
+            self.engine.pseudo_axis_values = position
+
+            solutions = self.engine.solutions
 
             if use_first:
                 # just use the first solution
-                sol = solutions.items()[0]
-                return [sol.geometry_get().axes_values_get(self._units)]
-            else:
-                ret = [sol.geometry_get().axes_values_get(self._units)
-                       for sol in solutions.items()]
+                solutions[0].select()
 
-                if len(ret) > 1:
-                    self._solutions = (engine, ret, solutions)
-
-                return ret
+            return solutions
 
     def using_engine(self, engine):
         return UsingEngine(self, engine)
 
-    def __call__(self, start, end=None, n=100, engine=None,
-                 **kwargs):
+    def _interpret_start_end(self, start, end, n=100):
+        num_params = len(self.pseudo_axis_names)
+
         start = np.array(start)
 
-        # TODO better interpretations of input
         if end is not None:
             end = np.array(end)
 
@@ -616,11 +784,35 @@ class HklCalc(object):
             else:
                 raise ValueError('Invalid set of h, k, l positions')
 
+        return hs, ks, ls
+
+    def __call__(self, start, end=None, n=100, engine=None,
+                 **kwargs):
         with self.using_engine(engine):
+            hs, ks, ls = self._interpret_start_end(start, end=end, n=n)
+
             for h, k, l in zip(hs, ks, ls):
                 print('calc with', h, k, l)
-                yield self.calc(h, k, l, engine=None,
+                yield self.calc((h, k, l), engine=None,
                                 **kwargs)
+
+    def _repr_info(self):
+        repr = ['engine={!r}'.format(self.engine.name),
+                'detector={!r}'.format(self._detector),
+                'sample={!r}'.format(self._sample),
+                'samples={!r}'.format(self._samples),
+                ]
+
+        return repr
+
+    def __repr__(self):
+        return '{}({})'.format(self.__class__.__name__,
+                               ', '.join(self._repr_info()))
+
+    def __str__(self):
+        info = self._repr_info()
+        return '{}({})'.format(self.__class__.__name__,
+                               ', '.join(info))
 
 
 class Diffractometer(PseudoPositioner):
