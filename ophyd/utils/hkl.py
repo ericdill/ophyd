@@ -9,11 +9,12 @@
 '''
 
 from __future__ import print_function
+import inspect
+import sys
 from collections import OrderedDict
 
 import numpy as np
 
-import sys
 try:
     from gi.repository import Hkl as hkl_module
     from gi.repository import GLib
@@ -547,16 +548,18 @@ class Engine(object):
                                ', '.join(self._repr_info()))
 
 
-class RecipCalc(object):
+class CalcRecip(object):
     def __init__(self, dtype, engine='hkl',
                  sample='main', lattice=None,
-                 degrees=True, units=UserUnits):
+                 degrees=True, units=UserUnits,
+                 lock_engine=False):
         self._engine = None  # set below with property
         self._detector = new_detector()
         self._degrees = bool(degrees)
         self._sample = None
         self._samples = {}
         self._units = units
+        self._lock_engine = bool(lock_engine)
 
         try:
             self._factory = hkl_module.factories()[dtype]
@@ -573,6 +576,13 @@ class RecipCalc(object):
         self.engine = engine
 
     @property
+    def engine_locked(self):
+        '''
+        If set, do not allow the engine to be changed post-initialization
+        '''
+        return self._lock_engine
+
+    @property
     def engine(self):
         return self._engine
 
@@ -580,6 +590,10 @@ class RecipCalc(object):
     def engine(self, engine):
         if engine is self._engine:
             return
+
+        if self._lock_engine and self._engine is not None:
+            raise ValueError('Engine is locked on this %s instance' %
+                             self.__class__.__name__)
 
         if isinstance(engine, hkl_module.Engine):
             self._engine = engine
@@ -787,7 +801,7 @@ class RecipCalc(object):
                     return [positions[i, :] for i in range(num_params)]
 
         raise ValueError('Invalid set of %s positions' %
-                            ', '.join(self.pseudo_axis_names))
+                         ', '.join(self.pseudo_axis_names))
 
     def __call__(self, start, end=None, n=100, engine=None,
                  path_type='linear', **kwargs):
@@ -818,17 +832,82 @@ class RecipCalc(object):
 
 
 class Diffractometer(PseudoPositioner):
-    def __init__(self, hkl_calc, **kwargs):
+    def __init__(self, calc_class, calc_kw=None,
+                 **kwargs):
+
+        if isinstance(calc_class, CalcRecip):
+            self._calc = calc_class
+        elif inspect.isclass(calc_class):
+            if calc_kw is None:
+                calc_kw = {}
+
+            calc_kw = dict(calc_kw)
+            calc_kw.pop('lock_engine', True)
+            self._calc = calc_class(lock_engine=True, **calc_kw)
+        else:
+            raise ValueError('Must specify a calculation class or an instance '
+                             'of CalcRecip (or a derived class). Got: %s' %
+                             calc_class)
+
+        if not self._calc.engine_locked:
+            # Reason for this is that the engine determines the pseudomotor
+            # names, so if the engine is switched from underneath, the
+            # pseudomotor will no longer function properly
+            raise ValueError('Calculation engine must have lock_engine set')
+
         PseudoPositioner.__init__(self,
+                                  [],
                                   forward=self.hkl_to_real,
                                   reverse=self.real_to_hkl,
                                   pseudo=['h', 'k', 'l'],
                                   **kwargs)
-
-        self._hkl = hkl_calc
 
     def hkl_to_real(self, h=0.0, k=0.0, l=0.0):
         return [0, 0, 0]
 
     def real_to_hkl(self, **todo):
         pass
+
+
+def _create_classes(class_suffix, dtype):
+    '''
+    Create reciprocal calculation and diffractometer classes
+    for a specific type of diffractometer.
+    '''
+    # - calculation
+    def calc_init(self, **kwargs):
+        CalcRecip.__init__(self, dtype, **kwargs)
+
+    calc_name = 'Calc%s' % class_suffix
+    _dict = dict(__init__=calc_init,
+                 __doc__='Reciprocal space calculation helper for %s' % dtype)
+    globals()[calc_name] = type(calc_name, (CalcRecip, ), _dict)
+
+    calc_class = globals()[calc_name]
+
+    # - diffractometer pseudomotor
+    def diffr_init(self, **kwargs):
+        Diffractometer.__init__(self, calc_class, **kwargs)
+
+    diffr_class = 'Diff%s' % class_suffix
+    _dict = dict(__init__=diffr_init,
+                 __doc__='%s diffractometer pseudomotor' % dtype)
+    globals()[diffr_class] = type(diffr_class, (Diffractometer, ), _dict)
+
+
+# TODO can we make these names a bit better? ugh
+_create_classes('E4CH', 'E4CH')
+_create_classes('E4CV', 'E4CV')
+_create_classes('E6C', 'E6C')
+_create_classes('K4CV', 'K4CV')
+_create_classes('K6C', 'K6C')
+_create_classes('Petra3_p09_eh2', 'PETRA3 P09 EH2')
+_create_classes('SoleilMars', 'SOLEIL MARS')
+_create_classes('SoleilSiriusKappa', 'SOLEIL SIRIUS KAPPA')
+_create_classes('SoleilSiriusTurret', 'SOLEIL SIRIUS TURRET')
+_create_classes('SoleilSixsMed1p2', 'SOLEIL SIXS MED1+2')
+_create_classes('SoleilSixsMed2p2', 'SOLEIL SIXS MED2+2')
+_create_classes('SoleilSixs', 'SOLEIL SIXS')
+_create_classes('Med2p3', 'MED2+3')
+_create_classes('TwoC', 'TwoC')
+_create_classes('Zaxis', 'ZAXIS')

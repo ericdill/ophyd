@@ -1,9 +1,12 @@
 from __future__ import print_function
-from ophyd.utils.hkl import RecipCalc, hkl_module
+from ophyd.utils.hkl import (CalcRecip, CalcE4CH)
+import ophyd.utils.hkl as hkl_module
 from pprint import pprint
 
+
 def test():
-    k6c = RecipCalc('K6C', engine='hkl')
+    print('Diffractometer types: %s' % ', '.join(hkl_module.DIFF_TYPES))
+    k6c = CalcRecip('K6C', engine='hkl')
 
     print(k6c.engines)
     print(k6c['mu'])
@@ -73,12 +76,15 @@ def test():
     print('* 3 specific hkls')
     list(k6c([[0, 1, 0], [0, 1, 0.01], [0, 1, 0.02]]))
 
-    q2_recip = RecipCalc('K6C', engine='q2')
+    q2_recip = CalcRecip('K6C', engine='q2')
     print('q is', q2_recip['q'])
     print('alpha is', q2_recip['alpha'])
     assert(len(list(q2_recip([[1, 2], ]))) == 1)
     assert(len(list(q2_recip([[1, 2], [3, 4]]))) == 2)
     assert(len(list(q2_recip([1, 2], [3, 4], n=20))) == 21)
+
+    e4ch = CalcE4CH()
+    print('e4ch axes:', e4ch.pseudo_axis_names, e4ch.physical_axis_names)
     return k6c
 
 if __name__ == '__main__':
