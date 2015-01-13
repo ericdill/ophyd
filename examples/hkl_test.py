@@ -1,6 +1,8 @@
 from __future__ import print_function
-from ophyd.utils.hkl import (CalcRecip, CalcE4CH)
+from ophyd.utils.hkl import (CalcRecip, CalcE4CH,
+                             DiffE4CH)
 import ophyd.utils.hkl as hkl_module
+from ophyd.controls.positioner import Positioner
 from pprint import pprint
 
 
@@ -85,7 +87,28 @@ def test():
 
     e4ch = CalcE4CH()
     print('e4ch axes:', e4ch.pseudo_axis_names, e4ch.physical_axis_names)
-    return k6c
+
+    positioners = [Positioner(name='%s' % name) for name in
+                   e4ch.physical_axis_names]
+
+    for i, pos in enumerate(positioners):
+        pos._position = 0.1 * (i + 1)
+
+    diffr = DiffE4CH(positioners)
+
+    calc = diffr.calc
+    sample = calc.sample
+    sample.add_reflection(1, 1, 1)
+
+    pos0 = positioners[0]
+    pos0._set_position(pos0.position)
+
+    _pseudos = [(pos.name, pos.position) for pos in diffr.pseudos.values()]
+    _reals = [(pos.name, pos.position) for pos in diffr.reals.values()]
+
+    print('pseudo positioner is at %s' % (_pseudos, ))
+    print('real positioners %s' % (_reals, ))
+    return k6c, diffr
 
 if __name__ == '__main__':
-    k6c = test()
+    k6c, diffr = test()

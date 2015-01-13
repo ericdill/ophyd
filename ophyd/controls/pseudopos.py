@@ -153,6 +153,7 @@ class PseudoPositioner(Positioner):
 
         self._pseudo_pos = [PseudoSingle(self, i) for i
                             in range(len(self._pseudo_names))]
+        self._position = [0.0] * len(self._pseudo_pos)
 
         # TODO will calculations ever be too complex to make caching x number of
         #      fwd/rev calculation results worthwhile?
@@ -160,11 +161,11 @@ class PseudoPositioner(Positioner):
             raise ValueError('Must have at least 1 positioner and pseudo-positioner')
 
     def __repr__(self):
-        repr = ['positioners={0._real!r}'.format(self),
-                'concurrent={0._concurrent!r}'.format(self),
-                'pseudo={0._pseudo_names!r}'.format(self),
-                'forward={0._calc_forward!r}'.format(self),
-                'reverse={0._calc_reverse!r}'.format(self),
+        repr = ['positioners={._real!r}'.format(self),
+                'concurrent={._concurrent!r}'.format(self),
+                'pseudo={._pseudo_names!r}'.format(self),
+                'forward={}'.format(self._calc_forward.__name__),
+                'reverse={}'.format(self._calc_reverse.__name__),
                 ]
 
         return self._get_repr(repr)

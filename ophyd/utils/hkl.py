@@ -832,7 +832,8 @@ class CalcRecip(object):
 
 
 class Diffractometer(PseudoPositioner):
-    def __init__(self, calc_class, calc_kw=None,
+    def __init__(self, calc_class, real_positioners, calc_kw=None,
+                 decision_fcn=None,
                  **kwargs):
 
         if isinstance(calc_class, CalcRecip):
@@ -853,20 +854,56 @@ class Diffractometer(PseudoPositioner):
             # Reason for this is that the engine determines the pseudomotor
             # names, so if the engine is switched from underneath, the
             # pseudomotor will no longer function properly
-            raise ValueError('Calculation engine must have lock_engine set')
+            raise ValueError('Calculation engine must be locked'
+                             ' (CalcDiff.lock_engine set)')
+
+        pseudo_axes = self._calc.pseudo_axes
+        pseudo_names = list(pseudo_axes.keys())
+        self._decision_fcn = decision_fcn
 
         PseudoPositioner.__init__(self,
-                                  [],
-                                  forward=self.hkl_to_real,
-                                  reverse=self.real_to_hkl,
-                                  pseudo=['h', 'k', 'l'],
+                                  real_positioners,
+                                  forward=self.pseudo_to_real,
+                                  reverse=self.real_to_pseudo,
+                                  pseudo=pseudo_names,
                                   **kwargs)
 
-    def hkl_to_real(self, h=0.0, k=0.0, l=0.0):
-        return [0, 0, 0]
+    @property
+    def calc(self):
+        return self._calc
 
-    def real_to_hkl(self, **todo):
-        pass
+    @property
+    def engine(self):
+        return self._calc.engine
+
+    # TODO so these calculations change the internal state of the hkl
+    # calculation class, which is probably not a good thing -- it becomes a
+    # problem when someone uses these functions outside of move()
+
+    def pseudo_to_real(self, **pseudo):
+        position = [pseudo[name] for name in self._pseudo_names]
+        solutions = self._calc.calc(position)
+
+        print('pseudo to real', solutions)
+        if self.decision_fcn is not None:
+            return self.decision_fcn(position, solutions)
+        else:
+            solutions[0].select()
+            return solutions[0].axis_values
+
+    def real_to_pseudo(self, **real):
+        calc = self._calc
+        for name, pos in real.items():
+            calc[name] = pos
+
+        ret = [calc[name] for name in self._pseudo_names]
+        print('real to pseudo', ret)
+        return ret
+
+        # finally:
+        #     # Restore the old state
+        #     for name, pos in old_positions.items():
+        #         calc[name] = pos
 
 
 def _create_classes(class_suffix, dtype):
@@ -886,8 +923,8 @@ def _create_classes(class_suffix, dtype):
     calc_class = globals()[calc_name]
 
     # - diffractometer pseudomotor
-    def diffr_init(self, **kwargs):
-        Diffractometer.__init__(self, calc_class, **kwargs)
+    def diffr_init(self, *args, **kwargs):
+        Diffractometer.__init__(self, calc_class, *args, **kwargs)
 
     diffr_class = 'Diff%s' % class_suffix
     _dict = dict(__init__=diffr_init,
