@@ -13,14 +13,14 @@ import numpy as np
 
 import sys
 try:
-    from gi.repository import Hkl as HklModule
+    from gi.repository import Hkl as hkl_module
     from gi.repository import GLib
 except ImportError as ex:
     print('[!!] Failed to import Hkl library; diffractometer support'
           ' disabled (%s)' % ex,
           file=sys.stderr)
 
-    HklModule = None
+    hkl_module = None
 
 from ..controls import PseudoPositioner
 
@@ -29,12 +29,12 @@ def new_detector(dtype=0):
     '''
     Create a new HKL-library detector
     '''
-    return HklModule.Detector.factory_new(HklModule.DetectorType(dtype))
+    return hkl_module.Detector.factory_new(hkl_module.DetectorType(dtype))
 
 
-if HklModule:
-    DIFF_TYPES = tuple(sorted(HklModule.factories().keys()))
-    UserUnits = HklModule.UnitEnum.USER
+if hkl_module:
+    DIFF_TYPES = tuple(sorted(hkl_module.factories().keys()))
+    UserUnits = hkl_module.UnitEnum.USER
 else:
     DIFF_TYPES = ()
 
@@ -55,21 +55,111 @@ class UsingEngine(object):
             self.calc.engine = self.old_engine
 
 
+def hkl_matrix_to_numpy(m):
+    if isinstance(m, np.ndarray):
+        return m
+
+    ret = np.zeros((3, 3))
+    for i in range(3):
+        for j in range(3):
+            ret[i, j] = m.get(i, j)
+
+    return ret
+
+
+def numpy_to_hkl_matrix(m):
+    if isinstance(m, hkl_module.Matrix):
+        return m
+
+    hklm = hkl_euler_matrix(0, 0, 0)
+    hklm.init(*m.flatten())
+    return hklm
+
+
+def hkl_euler_matrix(euler_x, euler_y, euler_z):
+    return hkl_module.Matrix.new_euler(euler_x, euler_y, euler_z)
+
+
+class HklParameter(object):
+    def __init__(self, calc, param, units=UserUnits):
+        self._calc = calc
+        self._param = param
+        self._units = units
+
+    @property
+    def name(self):
+        return self._param.name_get()
+
+    @property
+    def value(self):
+        return self._param.value_get(self._units)
+
+    @property
+    def user_units(self):
+        '''
+        A string representing the user unit type
+        '''
+        return self._param.user_unit_get()
+
+    @property
+    def default_units(self):
+        '''
+        A string representing the default unit type
+        '''
+        return self._param.default_unit_get()
+
+    @value.setter
+    def value(self, value):
+        self._param.value_set(value, self._units)
+
+    @property
+    def fit(self):
+        return self._param.fit_get()
+
+    @fit.setter
+    def fit(self, fit):
+        self._param.fit_set(fit)
+
+    @property
+    def limits(self):
+        return self._param.min_max_get(self._units)
+
+    @limits.setter
+    def limits(self, (low, high)):
+        self._param.min_max_set(low, high, self._units)
+
+    def __repr__(self):
+        repr = ['name={!r}'.format(self.name),
+                'limits={!r}'.format(self.limits),
+                'value={!r}'.format(self.value),
+                'fit={!r}'.format(self.fit),
+                ]
+
+        if self._units is UserUnits:
+            repr.append('units={!r}'.format(self.user_units))
+        else:
+            repr.append('units={!r}'.format(self.default_units))
+
+        return '{}({})'.format(self.__class__.__name__,
+                               ', '.join(repr))
+
+
 class HklCalc(object):
     def __init__(self, dtype, engine='hkl',
                  sample='main', lattice=None,
-                 degrees=True):
+                 degrees=True, units=UserUnits):
         self._engine = None  # set below with property
         self._detector = new_detector()
         self._degrees = bool(degrees)
         self._sample = None
         self._samples = {}
+        self._units = units
 
         try:
-            self._factory = HklModule.factories()[dtype]
+            self._factory = hkl_module.factories()[dtype]
         except KeyError:
-            raise ValueError('Invalid diffractometer type (%s)'
-                             'Choose from: %s' % (dtype, ', '.join(DIFF_TYPES)))
+            raise ValueError('Invalid diffractometer type %r; '
+                             'choose from: %s' % (dtype, ', '.join(DIFF_TYPES)))
 
         self._geometry = self._factory.create_new_geometry()
         self._engine_list = self._factory.create_new_engine_list()
@@ -89,7 +179,7 @@ class HklCalc(object):
         if engine is self._engine:
             return
 
-        if isinstance(engine, HklModule.Engine):
+        if isinstance(engine, hkl_module.Engine):
             self._engine = engine
         else:
             engines = self.engines
@@ -128,7 +218,7 @@ class HklCalc(object):
         if sample is self._sample:
             return
 
-        if isinstance(sample, HklModule.Sample):
+        if isinstance(sample, hkl_module.Sample):
             if sample not in self._samples.values():
                 self.add_sample(sample)
             else:
@@ -142,11 +232,11 @@ class HklCalc(object):
             raise ValueError('Unknown sample type (expected Hkl.Sample)')
 
     def add_sample(self, name, lattice=None, select=True):
-        if isinstance(name, HklModule.Sample):
+        if isinstance(name, hkl_module.Sample):
             sample = name
             name = sample.name_get()
         else:
-            sample = HklModule.Sample.new(name)
+            sample = hkl_module.Sample.new(name)
 
         if name in self._samples:
             raise ValueError('Sample of name "%s" already exists' % name)
@@ -163,20 +253,20 @@ class HklCalc(object):
         return sample
 
     def _set_lattice(self, sample, lattice):
-        if not isinstance(lattice, HklModule.Lattice):
+        if not isinstance(lattice, hkl_module.Lattice):
             a, b, c = lattice[:3]
             angles = lattice[3:]
             if self._degrees:
                 angles = [np.radians(angle) for angle in angles]
 
-            lattice = HklModule.Lattice.new(a, b, c, angles[0], angles[1], angles[2],
-                                            UserUnits)
+            lattice = hkl_module.Lattice.new(a, b, c, angles[0], angles[1], angles[2],
+                                             self._units)
 
         sample.lattice_set(lattice)
 
     @property
     def lattice(self):
-        lattice = self._sample.lattice_get(UserUnits)
+        lattice = self._sample.lattice_get(self._units)
         a, b, c = lattice[:3]
         angles = lattice[3:]
         if self._degrees:
@@ -193,41 +283,44 @@ class HklCalc(object):
         '''
         The U matrix
         '''
-        return self._sample.U_get()
+        return hkl_matrix_to_numpy(self._sample.U_get())
 
     @U.setter
     def U(self, new_u):
-        self._sample.U_set(new_u)
+        self._sample.U_set(numpy_to_hkl_matrix(new_u))
+
+    def _get_hkl_parameter(self, param):
+        return HklParameter(self, param, units=self._units)
 
     @property
     def ux(self):
-        return self._sample.ux_get()
+        return self._get_hkl_parameter(self._sample.ux_get())
 
     @property
     def uy(self):
-        return self._sample.uy_get()
+        return self._get_hkl_parameter(self._sample.uy_get())
 
     @property
     def uz(self):
-        return self._sample.uz_get()
+        return self._get_hkl_parameter(self._sample.uz_get())
 
     @property
     def UB(self):
         '''
         The UB matrix
         '''
-        return self._sample.UB_get()
+        return hkl_matrix_to_numpy(self._sample.UB_get())
 
     @UB.setter
     def UB(self, new_ub):
-        self._sample.UB_set(new_ub)
+        self._sample.UB_set(numpy_to_hkl_matrix(new_ub))
 
     @property
     def reciprocal(self):
         '''
         The reciprocal lattice
         '''
-        lattice = self._sample.lattice_get(UserUnits)
+        lattice = self._sample.lattice_get(self._units)
         reciprocal = lattice.copy()
         lattice.reciprocal(reciprocal)
         return reciprocal
@@ -259,7 +352,7 @@ class HklCalc(object):
         '''
         Remove a specific reflection
         '''
-        if not isinstance(refl, HklModule.SampleReflection):
+        if not isinstance(refl, hkl_module.SampleReflection):
             index = self.reflections.index(refl)
             refl = self._sample.reflections_get()[index]
 
@@ -313,17 +406,11 @@ class HklCalc(object):
                     for engine in self._engine_list.engines_get())
 
     @property
-    def axes(self):
+    def axis_names(self):
         return self._geometry.axes_names_get()
 
     def __getitem__(self, axis):
-        return self._geometry.axis_get(axis)
-
-    def get_axis_limits(self, axis):
-        return self[axis].min_max_get(UserUnits)
-
-    def set_axis_limits(self, axis, low, high):
-        self[axis].min_max_set(low, high, UserUnits)
+        return self._get_hkl_parameter(self._geometry.axis_get(axis))
 
     def select_solution(self, sol):
         if self._solutions is None:
@@ -346,16 +433,16 @@ class HklCalc(object):
             engine = self.engine
             try:
                 solutions = self.engine.pseudo_axes_values_set([h, k, l],
-                                                               UserUnits)
+                                                               self._units)
             except GLib.GError as ex:
                 raise ValueError('Calculation failed (%s)' % ex)
 
             if use_first:
                 # just use the first solution
                 sol = solutions.items()[0]
-                return [sol.geometry_get().axes_values_get(UserUnits)]
+                return [sol.geometry_get().axes_values_get(self._units)]
             else:
-                ret = [sol.geometry_get().axes_values_get(UserUnits)
+                ret = [sol.geometry_get().axes_values_get(self._units)
                        for sol in solutions.items()]
 
                 if len(ret) > 1:
