@@ -9,21 +9,58 @@
 '''
 
 from __future__ import print_function
+import os
 import inspect
 import sys
 from collections import OrderedDict
 
 import numpy as np
 
+
+# TODO: can conda environment activation script be modified upon
+#       installation of hkl library to remove all this nonsense?
+# TODO: better way to detect conda environment?
+# NOTE: this must be executed before gi is imported, otherwise the typelib
+#       path will not take effect
+if 'envs' in sys.executable:
+    try:
+        conda_root = os.path.abspath(sys.executable).split(os.path.sep)
+        conda_root = os.path.sep.join(conda_root[:conda_root.index('bin')])
+    except:
+        pass
+    else:
+        if not os.environ.get('GI_TYPELIB_PATH', None):
+            print('[**] Conda environment detected and GI_TYPELIB_PATH unset. '
+                  'Modifying environment as follows:', file=sys.stderr)
+
+            envs = (('GI_TYPELIB_PATH', os.path.join(conda_root, 'lib', 'girepository-1.0')),
+                    ('LD_LIBRARY_PATH', os.path.join(conda_root, 'lib')),
+                    )
+
+            for var, new_path in envs:
+                current = os.environ.get(var, '')
+
+                if current:
+                    if new_path in current.split(':'):
+                        continue
+
+                    new_path = ':'.join((new_path, os.environ[var]))
+
+                print('\tset %s=%r' % (var, new_path))
+                os.environ[var] = new_path
+
 try:
     from gi.repository import Hkl as hkl_module
     from gi.repository import GLib
 except ImportError as ex:
-    print('[!!] Failed to import Hkl library; diffractometer support'
-          ' disabled (%s)' % ex,
+    hkl_module = None
+
+
+if hkl_module is None:
+    print('[!!] Failed to import Hkl library; diffractometer support '
+          'disabled (%s)' % ex,
           file=sys.stderr)
 
-    hkl_module = None
 
 from ..controls import PseudoPositioner
 

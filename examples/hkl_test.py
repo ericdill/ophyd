@@ -141,6 +141,8 @@ def test():
     diffr.move((1, 0, 1, 8.0), wait=True)
     print()
     show_pos()
+    sample = diffr.calc.sample
+    print(diffr.calc)
     return k6c, diffr
 
 if __name__ == '__main__':
