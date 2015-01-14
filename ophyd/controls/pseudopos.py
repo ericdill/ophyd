@@ -38,7 +38,9 @@ class PseudoSingle(Positioner):
         self._master.subscribe(self._sub_proxy_idx, event_type=self.SUB_READBACK)
 
     def __repr__(self):
-        return self._get_repr(['idx={0._idx!r}'.format(self)])
+        return self._get_repr(['idx={0._idx!r}'.format(self),
+                               'position={0.position!r}'.format(self),
+                               ])
 
     def _sub_proxy(self, obj=None, **kwargs):
         '''Master callbacks such as start of motion, motion finished,

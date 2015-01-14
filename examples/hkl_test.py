@@ -1,5 +1,5 @@
 from __future__ import print_function
-from ophyd.utils.hkl import (CalcRecip, CalcE4CH,
+from ophyd.utils.hkl import (CalcRecip, CalcE4CH, CalcK6C,
                              DiffE4CH)
 import ophyd.utils.hkl as hkl_module
 from ophyd.controls.positioner import Positioner
@@ -8,7 +8,9 @@ from pprint import pprint
 
 def test():
     print('Diffractometer types: %s' % ', '.join(hkl_module.DIFF_TYPES))
-    k6c = CalcRecip('K6C', engine='hkl')
+    k6c = CalcK6C(engine='hkl')
+    # or equivalently:
+    # k6c = CalcRecip('K6C', engine='hkl')
 
     print(k6c.engines)
     print(k6c['mu'])
@@ -99,7 +101,9 @@ def test():
     for i, pos in enumerate(positioners):
         pos._position = 0.1 * (i + 1)
 
-    diffr = DiffE4CH(positioners)
+    diffr = DiffE4CH(positioners, name='my_diffractometer',
+                     energy=8.0,
+                     )
 
     calc = diffr.calc
     sample = calc.sample

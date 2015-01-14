@@ -629,7 +629,7 @@ class CalcRecip(object):
 
     @wavelength.setter
     def wavelength(self, wavelength):
-        self._geometry.wavelength_set(wavelength)
+        self._geometry.wavelength_set(wavelength, self._units)
 
     @property
     def energy(self):
@@ -900,7 +900,7 @@ class CalcRecip(object):
 
 class Diffractometer(PseudoPositioner):
     def __init__(self, calc_class, real_positioners, calc_kw=None,
-                 decision_fcn=None,
+                 decision_fcn=None, energy=8.0,
                  **kwargs):
 
         if isinstance(calc_class, CalcRecip):
@@ -926,6 +926,12 @@ class Diffractometer(PseudoPositioner):
 
         pseudo_axes = self._calc.pseudo_axes
         pseudo_names = list(pseudo_axes.keys())
+
+        self._include_energy = (energy is not None)
+
+        if self._include_energy:
+            pseudo_names.append('energy')
+
         self._decision_fcn = decision_fcn
 
         PseudoPositioner.__init__(self,
@@ -934,6 +940,23 @@ class Diffractometer(PseudoPositioner):
                                   reverse=self.real_to_pseudo,
                                   pseudo=pseudo_names,
                                   **kwargs)
+        if self._include_energy:
+            self.energy = self._calc.energy
+
+        print(self.pseudos)
+
+    @property
+    def energy(self):
+        '''
+        Energy in keV
+        '''
+        return self.pseudos['energy'].position
+
+    @energy.setter
+    def energy(self, energy):
+        energy = float(energy)
+        self._calc.energy = energy
+        self.pseudos['energy']._set_position(energy)
 
     @property
     def calc(self):
@@ -948,7 +971,15 @@ class Diffractometer(PseudoPositioner):
     # problem when someone uses these functions outside of move()
 
     def pseudo_to_real(self, **pseudo):
-        position = [pseudo[name] for name in self._pseudo_names]
+        if self._include_energy:
+            self.energy = pseudo.pop('energy')
+
+            # Remove energy from the position list
+            pseudo_names = self._pseudo_names[:-1]
+        else:
+            pseudo_names = self._pseudo_names
+
+        position = [pseudo[name] for name in pseudo_names]
         solutions = self._calc.calc(position)
 
         print('pseudo to real', solutions)
@@ -964,6 +995,10 @@ class Diffractometer(PseudoPositioner):
             calc[name] = pos
 
         ret = [calc[name] for name in self._pseudo_names]
+
+        if self._include_energy:
+            ret[-1] = self.energy
+
         print('real to pseudo', ret)
         return ret
 
