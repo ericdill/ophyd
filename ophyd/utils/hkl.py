@@ -148,19 +148,6 @@ class HklSample(object):
         del self._sample_dict[current]
         self._sample_dict[new_name] = self
 
-    def _set_lattice(self, sample, lattice):
-        if not isinstance(lattice, hkl_module.Lattice):
-            a, b, c, alpha, beta, gamma = lattice
-
-            lattice = hkl_module.Lattice.new(a, b, c, alpha, beta, gamma,
-                                             self._units)
-
-        sample.lattice_set(lattice)
-
-        # TODO: notes mention that lattice should not change, but is it alright
-        #       if init() is called again? or should reflections be cleared,
-        #       etc?
-
     @property
     def reciprocal(self):
         '''
@@ -182,6 +169,19 @@ class HklSample(object):
         a, b, c, alpha, beta, gamma = lattice
         return a, b, c, alpha, beta, gamma
 
+    def _set_lattice(self, sample, lattice):
+        if not isinstance(lattice, hkl_module.Lattice):
+            a, b, c, alpha, beta, gamma = lattice
+
+            lattice = hkl_module.Lattice.new(a, b, c, alpha, beta, gamma,
+                                             self._units)
+
+        sample.lattice_set(lattice)
+
+        # TODO: notes mention that lattice should not change, but is it alright
+        #       if init() is called again? or should reflections be cleared,
+        #       etc?
+
     @lattice.setter
     def lattice(self, lattice):
         self._set_lattice(self._sample, lattice)
@@ -189,7 +189,7 @@ class HklSample(object):
     @property
     def U(self):
         '''
-        The U matrix
+        The crystal orientation matrix, U
         '''
         return hkl_matrix_to_numpy(self._sample.U_get())
 
@@ -202,20 +202,31 @@ class HklSample(object):
 
     @property
     def ux(self):
+        '''
+        ux part of the U matrix
+        '''
         return self._get_parameter(self._sample.ux_get())
 
     @property
     def uy(self):
+        '''
+        uy part of the U matrix
+        '''
         return self._get_parameter(self._sample.uy_get())
 
     @property
     def uz(self):
+        '''
+        uz part of the U matrix
+        '''
         return self._get_parameter(self._sample.uz_get())
 
     @property
     def UB(self):
         '''
-        The UB matrix
+        The UB matrix, where U is the crystal orientation matrix and B is the
+        transition matrix of a non-orthonormal (the reciprocal of the crystal)
+        in an orthonormal system
         '''
         return hkl_matrix_to_numpy(self._sample.UB_get())
 
