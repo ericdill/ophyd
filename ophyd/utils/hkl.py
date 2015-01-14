@@ -332,8 +332,10 @@ class HklSample(object):
     def reflection_theoretical_angles(self):
         return self._refl_matrix(self._sample.get_reflection_theoretical_angle)
 
-    @property
     def affine(self):
+        '''
+        Make the sample transform affine
+        '''
         return self._sample.affine()
 
     def _repr_info(self):
@@ -410,11 +412,14 @@ class Parameter(object):
 
     @property
     def fit(self):
-        return self._param.fit_get()
+        '''
+        True if the parameter can be fit or not
+        '''
+        return bool(self._param.fit_get())
 
     @fit.setter
     def fit(self, fit):
-        self._param.fit_set(fit)
+        self._param.fit_set(int(fit))
 
     @property
     def limits(self):
