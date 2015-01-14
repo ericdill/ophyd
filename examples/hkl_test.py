@@ -66,6 +66,11 @@ def test():
     print('available engines', end=': ')
     pprint(k6c.engines)
 
+    # TODO compute_UB affects sample state?
+    # print('computed ub=%s' % sample.compute_UB([1, 1, 1], [1, 0, 1]))
+
+    print('wavelength is %s nm (energy=%s keV)' % (k6c.wavelength, k6c.energy))
+
     print('hkl mode is %s (can be: %s)' % (k6c.engine.mode, k6c.engine.modes))
     print('* single position')
     list(k6c([0, 1, 0]))

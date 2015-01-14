@@ -28,6 +28,9 @@ except ImportError as ex:
 from ..controls import PseudoPositioner
 
 
+NM_KEV = 1.239842  # lambda = 1.24 / E (nm, keV or um, eV)
+
+
 def new_detector(dtype=0):
     '''
     Create a new HKL-library detector
@@ -227,12 +230,41 @@ class HklSample(object):
         The UB matrix, where U is the crystal orientation matrix and B is the
         transition matrix of a non-orthonormal (the reciprocal of the crystal)
         in an orthonormal system
+
+        If written to, the B matrix will be kept constant:
+            U * B = UB -> U = UB * B^-1
         '''
         return hkl_matrix_to_numpy(self._sample.UB_get())
 
     @UB.setter
     def UB(self, new_ub):
         self._sample.UB_set(numpy_to_hkl_matrix(new_ub))
+
+    def _create_reflection(self, h, k, l, detector=None):
+        '''
+        Create a new reflection with the current geometry/detector
+        '''
+        if detector is None:
+            detector = self._calc._detector
+
+        return hkl_module.SampleReflection.new(self._calc._geometry, detector,
+                                               h, k, l)
+
+    # TODO: this appears to affect the internal state? it also does not return
+    #       a matrix, only an integer
+    def _compute_UB(self, r1, r2):
+        '''
+        Using the Busing and Levy method, compute the UB matrix for two
+        sample reflections, r1 and r2
+
+        '''
+        if not isinstance(r1, hkl_module.SampleReflection):
+            r1 = self._create_reflection(*r1)
+        if not isinstance(r2, hkl_module.SampleReflection):
+            r2 = self._create_reflection(*r2)
+
+        # return hkl_matrix_to_numpy(self._sample.compute_UB_busing_levy(r1, r2))
+        return self._sample.compute_UB_busing_levy(r1, r2)
 
     @property
     def reflections(self):
@@ -438,10 +470,6 @@ class Solution(object):
     def units(self):
         return self._engine.units
 
-    def set_wavelength(self, wavelength):
-        # TODO
-        self._geometry.wavelength_set(wavelength)
-
     def select(self):
         self._engine._engine_list.select_solution(self._list_item)
 
@@ -585,6 +613,29 @@ class CalcRecip(object):
             self.add_sample(sample, lattice=lattice)
 
         self.engine = engine
+
+    @property
+    def wavelength(self):
+        '''
+        The wavelength associated with the geometry, in nm
+        '''
+        # TODO hkl lib doesn't expose the getter, only the setter
+        return self._geometry.wavelength_get(self._units)
+
+    @wavelength.setter
+    def wavelength(self, wavelength):
+        self._geometry.wavelength_set(wavelength)
+
+    @property
+    def energy(self):
+        '''
+        The energy associated with the geometry, in keV
+        '''
+        return NM_KEV / self.wavelength
+
+    @energy.setter
+    def energy(self, energy):
+        self.wavelength = NM_KEV / energy
 
     @property
     def engine_locked(self):
