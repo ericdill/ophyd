@@ -527,6 +527,7 @@ class Engine(object):
 
     @property
     def parameters(self):
+        # TODO using additional engine parameters easily
         return self._engine.parameters_names_get()
 
     @property
@@ -941,7 +942,7 @@ class Diffractometer(PseudoPositioner):
                                   pseudo=pseudo_names,
                                   **kwargs)
         if self._include_energy:
-            self.energy = self._calc.energy
+            self.energy = float(energy)
 
         print(self.pseudos)
 
@@ -950,13 +951,19 @@ class Diffractometer(PseudoPositioner):
         '''
         Energy in keV
         '''
-        return self.pseudos['energy'].position
+        if self._include_energy:
+            return self._position[-1]
+        else:
+            raise RuntimeError('Energy not enabled')
 
     @energy.setter
     def energy(self, energy):
+        if not self._include_energy:
+            raise RuntimeError('Energy not enabled')
+
         energy = float(energy)
         self._calc.energy = energy
-        self.pseudos['energy']._set_position(energy)
+        self._position[-1] = energy
 
     @property
     def calc(self):
@@ -983,8 +990,8 @@ class Diffractometer(PseudoPositioner):
         solutions = self._calc.calc(position)
 
         print('pseudo to real', solutions)
-        if self.decision_fcn is not None:
-            return self.decision_fcn(position, solutions)
+        if self._decision_fcn is not None:
+            return self._decision_fcn(position, solutions)
         else:
             solutions[0].select()
             return solutions[0].axis_values

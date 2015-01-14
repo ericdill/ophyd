@@ -6,6 +6,20 @@ from ophyd.controls.positioner import Positioner
 from pprint import pprint
 
 
+class DumbPositioner(Positioner):
+    def move(self, position, **kwargs):
+        self._set_position(position)
+
+        self._started_moving = True
+        self._done_moving()
+
+        Positioner.move(self, position, **kwargs)
+
+    @property
+    def moving(self):
+        return False
+
+
 def test():
     print('Diffractometer types: %s' % ', '.join(hkl_module.DIFF_TYPES))
     k6c = CalcK6C(engine='hkl')
@@ -51,6 +65,7 @@ def test():
     except ValueError:
         pass
     else:
+        sample2
         raise Exception
 
     k6c.sample = 'main_sample'
@@ -95,7 +110,7 @@ def test():
     e4ch = CalcE4CH()
     print('e4ch axes:', e4ch.pseudo_axis_names, e4ch.physical_axis_names)
 
-    positioners = [Positioner(name='%s' % name) for name in
+    positioners = [DumbPositioner(name='%s' % name) for name in
                    e4ch.physical_axis_names]
 
     for i, pos in enumerate(positioners):
@@ -110,13 +125,22 @@ def test():
     sample.add_reflection(1, 1, 1)
 
     pos0 = positioners[0]
+    # this will run the callbacks to force a readback pseudo position calculation:
+    # (not normally used, since they should be tied to real motors)
     pos0._set_position(pos0.position)
 
-    _pseudos = [(pos.name, pos.position) for pos in diffr.pseudos.values()]
-    _reals = [(pos.name, pos.position) for pos in diffr.reals.values()]
+    def show_pos():
+        _pseudos = [(pos.name, pos.position) for pos in diffr.pseudos.values()]
+        _reals = [(pos.name, pos.position) for pos in diffr.reals.values()]
 
-    print('pseudo positioner is at %s' % (_pseudos, ))
-    print('real positioners %s' % (_reals, ))
+        print('pseudo positioner is at %s' % (_pseudos, ))
+        print('real positioners %s' % (_reals, ))
+
+    show_pos()
+    print()
+    diffr.move((1, 0, 1, 8.0), wait=True)
+    print()
+    show_pos()
     return k6c, diffr
 
 if __name__ == '__main__':
