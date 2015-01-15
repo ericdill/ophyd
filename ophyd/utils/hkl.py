@@ -25,6 +25,8 @@ import numpy as np
 if 'envs' in sys.executable:
     try:
         conda_root = os.path.abspath(sys.executable).split(os.path.sep)
+        if 'envs' not in conda_root:
+            conda_root = None
         conda_root = os.path.sep.join(conda_root[:conda_root.index('bin')])
     except:
         pass

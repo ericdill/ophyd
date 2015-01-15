@@ -147,3 +147,5 @@ def test():
 
 if __name__ == '__main__':
     k6c, diffr = test()
+
+    print('hkl module is: ', hkl_module.hkl_module)
