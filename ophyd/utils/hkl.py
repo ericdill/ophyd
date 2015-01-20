@@ -580,9 +580,8 @@ class Engine(object):
 
     @property
     def pseudo_axes(self):
-        keys = self.pseudo_axis_names
-        values = self.pseudo_axis_values
-        return OrderedDict(zip(keys, values))
+        return OrderedDict(zip(self.pseudo_axis_names,
+                               self.pseudo_axis_values))
 
     @pseudo_axis_values.setter
     def pseudo_axis_values(self, values):
@@ -803,8 +802,11 @@ class CalcRecip(object):
 
     @property
     def physical_axis_values(self):
-        return [self[name].value
-                for name in self._geometry.axes_names_get()]
+        return self._geometry.axes_values_get(self._units)
+
+    @physical_axis_values.setter
+    def physical_axis_values(self, positions):
+        return self._geometry.axes_values_set(positions, self._units)
 
     @property
     def physical_axes(self):
@@ -992,8 +994,6 @@ class Diffractometer(PseudoPositioner):
         if energy is not None:
             self._energy_sig.put(float(energy))
 
-        print(self.pseudos)
-
     @property
     def energy(self):
         '''
@@ -1044,10 +1044,8 @@ class Diffractometer(PseudoPositioner):
         for name, pos in real.items():
             calc[name] = pos
 
-        ret = [calc[name] for name in self._pseudo_names]
-
-        logger.debug('real to pseudo: {}'.format(ret))
-        return ret
+        logger.debug('real to pseudo: {}'.format(calc.pseudo_axis_values))
+        return calc.pseudo_axis_values
 
         # finally:
         #     # Restore the old state
@@ -1057,8 +1055,8 @@ class Diffractometer(PseudoPositioner):
 
 def _create_classes(class_suffix, dtype):
     '''
-    Create reciprocal calculation and diffractometer classes
-    for a specific type of diffractometer.
+    Create reciprocal calculation and diffractometer classes for a specific type
+    of diffractometer.
     '''
     # - calculation
     def calc_init(self, **kwargs):

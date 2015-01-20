@@ -6,7 +6,6 @@ from ophyd.utils.hkl import (CalcRecip, CalcE4CH, CalcK6C,
                              DiffE4CH)
 import ophyd.utils.hkl as hkl_module
 from ophyd.controls.positioner import Positioner
-from pprint import pprint
 
 
 class DumbPositioner(Positioner):
@@ -32,6 +31,9 @@ def test():
     logger = config.logger
 
     logger.info('Diffractometer types: %s' % ', '.join(hkl_module.DIFF_TYPES))
+
+    logger.info('')
+    logger.info('---- calck6c ----')
     k6c = CalcK6C(engine='hkl')
     # or equivalently:
     # k6c = CalcRecip('K6C', engine='hkl')
@@ -46,6 +48,8 @@ def test():
     logger.info('engine parameters: {}'.format(k6c.parameters))
     logger.info('hkl 1, 1, 1 corresponds to real motor positions: {}'.format(list(k6c([1, 0.99, 1]))))
 
+    logger.info('')
+    logger.info('---- k6c.sample ----')
     sample = k6c.sample
     refl = sample.add_reflection(1, 1, 1)
     sample.remove_reflection(refl)
@@ -80,6 +84,8 @@ def test():
 
     k6c.sample = 'main_sample'
 
+    logger.info('')
+    logger.info('---- k6c matrix, lattice, engines ----')
     sample.U = [[1, 1, 1], [1, 0, 0], [1, 1, 0]]
     logger.info('U=%s' % sample.U)
     # sample.UB = [[1, 1, 1], [1, 0, 0], [1, 1, 0]]
@@ -119,6 +125,9 @@ def test():
     assert(len(list(q2_recip([[1, 2], [3, 4]]))) == 2)
     assert(len(list(q2_recip([1, 2], [3, 4], n=20))) == 21)
 
+    logger.info('')
+    logger.info('---- calce4ch ----')
+
     e4ch = CalcE4CH()
     logger.info('e4ch axes: {} {}'.format(e4ch.pseudo_axis_names, e4ch.physical_axis_names))
 
@@ -128,6 +137,8 @@ def test():
     for i, pos in enumerate(positioners):
         pos._position = 0.1 * (i + 1)
 
+    logger.info('')
+    logger.info('---- diffractometer ----')
     diffr = DiffE4CH(positioners, name='my_diffractometer',
                      energy=8.0,
                      )
@@ -145,8 +156,8 @@ def test():
         _pseudos = [(pos.name, pos.position) for pos in diffr.pseudos.values()]
         _reals = [(pos.name, pos.position) for pos in diffr.reals.values()]
 
-        logger.info('pseudo positioner is at %s' % (_pseudos, ))
-        logger.info('real positioners %s' % (_reals, ))
+        logger.info('pseudo positioner is at {}'.format(_pseudos))
+        logger.info('real positioners: {}'.format(_reals))
 
     show_pos()
     logger.info('')
@@ -155,8 +166,10 @@ def test():
     diffr.move((1, 0, 1), wait=True)
     logger.info('')
     show_pos()
+
     sample = diffr.calc.sample
     logger.info(diffr.calc)
+
     return k6c, diffr
 
 if __name__ == '__main__':
