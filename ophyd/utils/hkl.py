@@ -12,6 +12,7 @@ from __future__ import print_function
 import os
 import inspect
 import sys
+import logging
 from collections import OrderedDict
 
 import numpy as np
@@ -22,7 +23,7 @@ import numpy as np
 # TODO: better way to detect conda environment?
 # NOTE: this must be executed before gi is imported, otherwise the typelib
 #       path will not take effect
-if 'envs' in sys.executable:
+if 'envs' in sys.executable and not os.environ.get('GI_TYPELIB_PATH', None):
     try:
         conda_root = os.path.abspath(sys.executable).split(os.path.sep)
         if 'envs' not in conda_root:
@@ -31,25 +32,24 @@ if 'envs' in sys.executable:
     except:
         pass
     else:
-        if not os.environ.get('GI_TYPELIB_PATH', None):
-            print('[**] Conda environment detected and GI_TYPELIB_PATH unset. '
-                  'Modifying environment as follows:', file=sys.stderr)
+        print('[**] Conda environment detected and GI_TYPELIB_PATH unset. '
+              'Modifying environment as follows:', file=sys.stderr)
 
-            envs = (('GI_TYPELIB_PATH', os.path.join(conda_root, 'lib', 'girepository-1.0')),
-                    ('LD_LIBRARY_PATH', os.path.join(conda_root, 'lib')),
-                    )
+        envs = (('GI_TYPELIB_PATH', os.path.join(conda_root, 'lib', 'girepository-1.0')),
+                ('LD_LIBRARY_PATH', os.path.join(conda_root, 'lib')),
+                )
 
-            for var, new_path in envs:
-                current = os.environ.get(var, '')
+        for var, new_path in envs:
+            current = os.environ.get(var, '')
 
-                if current:
-                    if new_path in current.split(':'):
-                        continue
+            if current:
+                if new_path in current.split(':'):
+                    continue
 
-                    new_path = ':'.join((new_path, os.environ[var]))
+                new_path = ':'.join((new_path, os.environ[var]))
 
-                print('\tset %s=%r' % (var, new_path))
-                os.environ[var] = new_path
+            print('\tset %s=%r' % (var, new_path))
+            os.environ[var] = new_path
 
 try:
     from gi.repository import Hkl as hkl_module
@@ -64,9 +64,10 @@ if hkl_module is None:
           file=sys.stderr)
 
 
-from ..controls import PseudoPositioner
+from ..controls import (Signal, PseudoPositioner)
 
 
+logger = logging.getLogger(__name__)
 NM_KEV = 1.239842  # lambda = 1.24 / E (nm, keV or um, eV)
 
 
@@ -940,7 +941,7 @@ class CalcRecip(object):
 
 class Diffractometer(PseudoPositioner):
     def __init__(self, calc_class, real_positioners, calc_kw=None,
-                 decision_fcn=None, energy=8.0,
+                 decision_fcn=None, energy_signal=None, energy=8.0,
                  **kwargs):
 
         if isinstance(calc_class, CalcRecip):
@@ -967,11 +968,6 @@ class Diffractometer(PseudoPositioner):
         pseudo_axes = self._calc.pseudo_axes
         pseudo_names = list(pseudo_axes.keys())
 
-        self._include_energy = (energy is not None)
-
-        if self._include_energy:
-            pseudo_names.append('energy')
-
         self._decision_fcn = decision_fcn
 
         PseudoPositioner.__init__(self,
@@ -980,8 +976,21 @@ class Diffractometer(PseudoPositioner):
                                   reverse=self.real_to_pseudo,
                                   pseudo=pseudo_names,
                                   **kwargs)
-        if self._include_energy:
-            self.energy = float(energy)
+
+        if energy_signal is None:
+            energy_signal = Signal(name='%s.energy' % self.name)
+        else:
+            # For pre-existing signals, don't update the energy upon
+            # initialization
+            energy = None
+
+        self._energy_sig = energy_signal
+
+        self._energy_sig.subscribe(self._energy_changed,
+                                   event_type=Signal.SUB_VALUE)
+
+        if energy is not None:
+            self._energy_sig.put(float(energy))
 
         print(self.pseudos)
 
@@ -990,19 +999,21 @@ class Diffractometer(PseudoPositioner):
         '''
         Energy in keV
         '''
-        if self._include_energy:
-            return self._position[-1]
-        else:
-            raise RuntimeError('Energy not enabled')
+        return self._energy_sig.value
 
     @energy.setter
     def energy(self, energy):
-        if not self._include_energy:
-            raise RuntimeError('Energy not enabled')
+        self._energy_sig.put(float(energy))
 
-        energy = float(energy)
+    def _energy_changed(self, value=None, **kwargs):
+        '''
+        Callback indicating that the energy signal was updated
+        '''
+        energy = value
+
+        logger.debug('{.name} energy changed: {}'.format(self, value))
         self._calc.energy = energy
-        self._position[-1] = energy
+        self._update_position()
 
     @property
     def calc(self):
@@ -1017,18 +1028,11 @@ class Diffractometer(PseudoPositioner):
     # problem when someone uses these functions outside of move()
 
     def pseudo_to_real(self, **pseudo):
-        if self._include_energy:
-            self.energy = pseudo.pop('energy')
-
-            # Remove energy from the position list
-            pseudo_names = self._pseudo_names[:-1]
-        else:
-            pseudo_names = self._pseudo_names
-
-        position = [pseudo[name] for name in pseudo_names]
+        position = [pseudo[name] for name in self._pseudo_names]
         solutions = self._calc.calc(position)
 
-        print('pseudo to real', solutions)
+        logger.debug('pseudo to real: {}'.format(solutions))
+
         if self._decision_fcn is not None:
             return self._decision_fcn(position, solutions)
         else:
@@ -1042,10 +1046,7 @@ class Diffractometer(PseudoPositioner):
 
         ret = [calc[name] for name in self._pseudo_names]
 
-        if self._include_energy:
-            ret[-1] = self.energy
-
-        print('real to pseudo', ret)
+        logger.debug('real to pseudo: {}'.format(ret))
         return ret
 
         # finally:
