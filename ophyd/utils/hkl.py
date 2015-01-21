@@ -565,6 +565,17 @@ class Engine(object):
     def solutions(self):
         return tuple(self._solutions)
 
+    def update(self):
+        '''
+        Calculate the pseudo axis positions from the real axis positions
+        '''
+        # TODO: though this works, maybe it could be named better on the hkl
+        # side? either the 'get' function name or the fact that the EngineList
+        # is more than just a list...
+
+        # calculate from real to pseudo positions first
+        self._engine_list.get()
+
     @property
     def parameters(self):
         # TODO using additional engine parameters easily
@@ -829,6 +840,12 @@ class CalcRecip(object):
         '''Dictionary of axis name to position'''
         return self._engine.pseudo_axes
 
+    def update(self):
+        '''
+        Calculate the pseudo axis positions from the real axis positions
+        '''
+        return self._engine.update()
+
     def _get_parameter(self, param):
         return Parameter(param, units=self._units)
 
@@ -1043,6 +1060,8 @@ class Diffractometer(PseudoPositioner):
         calc = self._calc
         for name, pos in real.items():
             calc[name] = pos
+
+        calc.update()
 
         logger.debug('real to pseudo: {}'.format(calc.pseudo_axis_values))
         return calc.pseudo_axis_values
