@@ -573,7 +573,6 @@ class Engine(object):
         # side? either the 'get' function name or the fact that the EngineList
         # is more than just a list...
 
-        # calculate from real to pseudo positions first
         self._engine_list.get()
 
     @property
