@@ -152,10 +152,12 @@ def hkl_euler_matrix(euler_x, euler_y, euler_z):
 
 
 class HklSample(object):
-    def __init__(self, calc, sample=None, units=UserUnits,
-                 **kwargs):
+    def __init__(self, calc, sample=None, units=None, **kwargs):
         if sample is None:
             sample = hkl_module.Sample.new('')
+
+        if units is None:
+            units = UserUnits
 
         self._calc = calc
         self._sample = sample
@@ -167,10 +169,11 @@ class HklSample(object):
         for name in ('lattice', 'name', 'U', 'UB', 'ux', 'uy', 'uz',
                      'reflections', ):
             value = kwargs.pop(name, None)
-            if value is not None:
+            if value:
                 try:
                     setattr(self, name, value)
                 except Exception as ex:
+                    #todo don't pokemon handle this
                     ex.message = '%s (attribute=%s)' % (ex, name)
                     raise ex(ex.message)
 
@@ -194,21 +197,27 @@ class HklSample(object):
 
     @property
     def name(self):
-        '''
+        """
         The name of the currently selected sample
-        '''
+        """
         return self._sample.name_get()
 
     @name.setter
     def name(self, new_name):
-        sample = self._sample
-        current = sample.name_get()
+        """Replace the current sample
+
+        Parameters
+        ----------
+        new_name : str
+        """
         if new_name in self._sample_dict:
             raise ValueError('Sample with that name already exists')
+        sample = self._sample
+        old_name = sample.name_get()
 
         sample.name_set(new_name)
 
-        del self._sample_dict[current]
+        del self._sample_dict[old_name]
         self._sample_dict[new_name] = self
 
     @property
