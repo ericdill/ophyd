@@ -104,26 +104,46 @@ class UsingEngine(object):
             self.calc.engine = self.old_engine
 
 
-def hkl_matrix_to_numpy(m):
-    if isinstance(m, np.ndarray):
-        return m
+def to_numpy(mat):
+    """Convert an hkl ``Matrix`` to a numpy ndarray
+
+    Parameters
+    ----------
+    mat : Hkl.Matrix
+
+    Returns
+    -------
+    ndarray
+    """
+    if isinstance(mat, np.ndarray):
+        return mat
 
     ret = np.zeros((3, 3))
     for i in range(3):
         for j in range(3):
-            ret[i, j] = m.get(i, j)
+            ret[i, j] = mat.get(i, j)
 
     return ret
 
 
-def numpy_to_hkl_matrix(m):
-    if isinstance(m, hkl_module.Matrix):
-        return m
+def to_hkl(arr):
+    """Convert a numpy ndarray to an hkl ``Matrix``
 
-    m = np.array(m)
+    Parameters
+    ----------
+    arr : ndarray
+
+    Returns
+    -------
+    Hkl.Matrix
+    """
+    if isinstance(arr, hkl_module.Matrix):
+        return arr
+
+    arr = np.array(arr)
 
     hklm = hkl_euler_matrix(0, 0, 0)
-    hklm.init(*m.flatten())
+    hklm.init(*arr.flatten())
     return hklm
 
 
@@ -234,11 +254,11 @@ class HklSample(object):
         '''
         The crystal orientation matrix, U
         '''
-        return hkl_matrix_to_numpy(self._sample.U_get())
+        return to_numpy(self._sample.U_get())
 
     @U.setter
     def U(self, new_u):
-        self._sample.U_set(numpy_to_hkl_matrix(new_u))
+        self._sample.U_set(to_hkl(new_u))
 
     def _get_parameter(self, param):
         return Parameter(param, units=self._units)
@@ -274,11 +294,11 @@ class HklSample(object):
         If written to, the B matrix will be kept constant:
             U * B = UB -> U = UB * B^-1
         '''
-        return hkl_matrix_to_numpy(self._sample.UB_get())
+        return to_numpy(self._sample.UB_get())
 
     @UB.setter
     def UB(self, new_ub):
-        self._sample.UB_set(numpy_to_hkl_matrix(new_ub))
+        self._sample.UB_set(to_hkl(new_ub))
 
     def _create_reflection(self, h, k, l, detector=None):
         '''
