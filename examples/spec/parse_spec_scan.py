@@ -1,7 +1,7 @@
 from collections import OrderedDict
 import re
 from pprint import pprint
-
+import pandas as pd
 
 def parse_command(output):
     """Parse a spec command line
@@ -33,6 +33,7 @@ def parse_command(output):
         dct['cmd_args'] = args
 
     return dct
+
 
 def spec_equals_to_dict(line):
     """Convert a spec output line to a dictionary
@@ -79,9 +80,11 @@ def spec_equals_to_dict(line):
     # dct = {'Omega': -24.986, 'TwoTheta': 40.975, 'Lambda': 1.54}
     return dct
 
+
 def parse_br(output):
     """See ``parse_ubr``"""
     return parse_ubr(output)
+
 
 def parse_ubr(output):
     """Parse the output of the ``ubr`` or ``br`` spec command
@@ -152,12 +155,14 @@ def parse_wh(output):
     meta['motors'] = {name: pos for name, pos in zip(output[4].split(), output[5].split())}
     return meta
 
+
 motor_mapping = {'del': 'Delta',
                  'th': 'Theta',
                  'chi': 'Chi',
                  'phi': 'Phi',
                  'mu': 'Mu',
                  'gam': 'Gamma'}
+
 
 def parse_reflection(refl_lines):
     """Parse one of the reflections from the output of ``pa``
@@ -189,6 +194,7 @@ def parse_reflection(refl_lines):
     refl.update(motors)
     refl.update(hkl)
     return refl
+
 
 def parse_lattice(lattice_lines):
     """Parse the lattice lines from the output of ``pa``
@@ -224,6 +230,7 @@ def parse_lattice(lattice_lines):
     lattice['real'] = {r: val for r, val in zip(real_labels, real_values)}
     lattice['recip'] = {r: val for r, val in zip(recip_labels, recip_values)}
     return lattice
+
 
 def parse_azimuthal(azimuthal_lines):
     """Parse the azimuthal bit from the spec ``pa`` command
@@ -262,6 +269,7 @@ def parse_azimuthal(azimuthal_lines):
     # and, uh, return it...
     return dct
 
+
 def parse_mono(mono_lines):
     """Parse the Monochromator lines from the spec command ``pa``
 
@@ -288,14 +296,111 @@ def parse_mono(mono_lines):
            'wavelength': float(mono_lines[2].split()[-1])}
     return dct
 
+
 def parse_cutpoints(cutpoints_lines):
     motors = cutpoints_lines[1].split()
     positions = cutpoints_lines[2].split()
     motors = {motor_mapping[mtr]: pos for mtr, pos in zip(motors[:6], positions[-6:])}
     return motors
 
+
 def parse_pa(output):
-    # parse the spec command
+    """Parse the output from the spec command ``pa``
+
+    Parameters
+    ----------
+    output : list
+        List of lines from the spec command ``pa``
+        e.g.,
+        107.SIXC> pa
+
+        Six-Circle Geometry, Omega fixed (four circle, Mu = Gamma = 0) (mode 0)
+        Sector 0
+
+          Primary Reflection (at lambda 1.54):
+           del th chi phi mu gam = 60 30 0 0 0 0
+                           H K L = 1 0 0
+
+          Secondary Reflection (at lambda 1.54):
+           del th chi phi mu gam = 60 30 0 90 0 0
+                           H K L = 0 1 0
+
+          Lattice Constants (lengths / angles):
+                      real space = 1.54 1.54 1.54 / 90 90 90
+                reciprocal space = 4.08 4.08 4.08 / 90 90 90
+
+          Azimuthal Reference:
+                           H K L = 0 0 1
+                       sigma tau = 0 0
+
+                Gamma-arm length = 585 mm
+                  Gamma tracking = Off
+
+          Monochromator:
+                   d-spacing = 0 Angstoms
+                          Lambda = 1.54
+
+          Cut Points:
+              del   th  chi  phi   mu  gam
+             -180 -180 -180 -180 -180 -180
+
+    Returns
+    -------
+    dict
+        Dictionary of the ``pa`` output
+        e.g.,
+        {'azimuthal': {'H': '0',
+           'K': '0',
+           'L': '1',
+           'gamma arm length': '585 mm',
+           'gamma tracking': 'Off',
+           'sigma': '0',
+           'tau': '0'},
+          'cmd': 'pa',
+          'cmd_idx': '107',
+          'cut_points': {'Chi': '-180',
+           'Delta': '-180',
+           'Gamma': '-180',
+           'Mu': '-180',
+           'Phi': '-180',
+           'Theta': '-180'},
+          'description': 'Six-Circle Geometry, Omega fixed (four circle, Mu = Gamma = 0) (mode 0)',
+          'diffractometer_type': 'SIXC',
+          'lattice': {'real': {'a': '1.54',
+            'alpha': '90',
+            'b': '1.54',
+            'beta': '90',
+            'c': '1.54',
+            'gamma': '90'},
+           'recip': {'a*': '4.08',
+            'alpha*': '90',
+            'b*': '4.08',
+            'beta*': '90',
+            'c*': '4.08',
+            'gamma*': '90'}},
+          'mono': {'d_spacing': '0 Angstoms', 'wavelength': 1.54},
+          'refl0': {'Chi': '0',
+           'Delta': '60',
+           'Gamma': '0',
+           'H': '1',
+           'K': '0',
+           'L': '0',
+           'Mu': '0',
+           'Phi': '0',
+           'Theta': '30',
+           'wavelength': '1.54'},
+          'refl1': {'Chi': '0',
+           'Delta': '60',
+           'Gamma': '0',
+           'H': '0',
+           'K': '1',
+           'L': '0',
+           'Mu': '0',
+           'Phi': '90',
+           'Theta': '30',
+           'wavelength': '1.54'},
+          'sector': '0'}
+    """
     meta = parse_command(output[0])
     # add the description to the spec command
     meta['description'] = output[1]
@@ -309,6 +414,7 @@ def parse_pa(output):
     meta['cut_points'] = parse_cutpoints(output[20:23])
 
     return meta
+
 
 def get_commands(filename):
     with open(filename, 'r') as f:
@@ -332,6 +438,7 @@ def get_commands(filename):
             pass
     return commands
 
+
 def parse_spec_output(spec_output_file):
     spec_commands = get_commands(spec_output_file)
     spec_mapping = {'ubr': parse_ubr,
@@ -342,7 +449,51 @@ def parse_spec_output(spec_output_file):
               for command, output in spec_commands]
     return parsed
 
+
+def parsed_to_dataframe(parsed):
+    # ubr and wh can be zipped together to produce
+    # pairs of desired position/actual position
+    ubr = [dct for dct in parsed if dct['cmd'] == 'ubr']
+    wh = [dct for dct in parsed if dct['cmd'] == 'wh']
+    meta = [dct for dct in parsed if dct['cmd'] not in ['ubr', 'wh']]
+    mapping = {'H (target)': ('desired', 'H'),
+               'K (target)': ('desired', 'K'),
+               'L (target)': ('desired', 'L'),
+               'H (actual)': ('actual', 'H'),
+               'K (actual)': ('actual', 'K'),
+               'L (actual)': ('actual', 'L'),
+               'Delta': ('actual', ['motors', 'Delta']),
+               'Theta': ('actual', ['motors', 'Theta']),
+               'Chi': ('actual', ['motors', 'Chi']),
+               'Phi': ('actual', ['motors', 'Phi']),
+               'Mu': ('actual', ['motors', 'Mu']),
+               'Gamma': ('actual', ['motors', 'Gamma']),
+    }
+    data = {key: [] for key in mapping.keys()}
+    index = []
+    for desired, actual in zip(ubr, wh):
+        index.append('%s-%s' % (desired['cmd_idx'], actual['cmd_idx']))
+        for k, v in mapping.items():
+            val = locals()[v[0]]
+            v = v[1]
+            if not isinstance(v, list):
+                v = [v]
+            for item in v:
+                val = val[item]
+            data[k].append(val)
+
+
+    series = {k: pd.Series(v, index) for k, v in data.items()}
+    df = pd.DataFrame(series)
+    return df, meta
+
+
 if __name__ == "__main__":
     parsed = parse_spec_output('spec-h-scan.txt')
-    for p in parsed:
-        pprint(p)
+    df, meta = parsed_to_dataframe(parsed)
+    print(df)
+    print("\nMETADATA"
+          "\n--------")
+    pprint(meta)
+
+
