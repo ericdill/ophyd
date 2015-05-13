@@ -366,7 +366,7 @@ class HklSample(object):
     @property
     def reflection_measured_angles(self):
         # TODO: typo bug report (mesured)
-        return self._refl_matrix(self._sample.get_reflection_mesured_angle)
+        return self._refl_matrix(self._sample.get_reflection_measured_angle)
 
     @property
     def reflection_theoretical_angles(self):
@@ -505,11 +505,11 @@ class Solution(object):
 
     @property
     def axis_names(self):
-        return self._geometry.axes_names_get()
+        return self._geometry.axis_names_get()
 
     @property
     def axis_values(self):
-        return self._geometry.axes_values_get(self.units)
+        return self._geometry.axis_values_get(self.units)
 
     @property
     def units(self):
@@ -582,11 +582,11 @@ class Engine(object):
 
     @property
     def pseudo_axis_names(self):
-        return self._engine.pseudo_axes_names_get()
+        return self._engine.pseudo_axis_names_get()
 
     @property
     def pseudo_axis_values(self):
-        return self._engine.pseudo_axes_values_get(self.units)
+        return self._engine.pseudo_axis_values_get(self.units)
 
     @property
     def pseudo_axes(self):
@@ -596,7 +596,8 @@ class Engine(object):
     @pseudo_axis_values.setter
     def pseudo_axis_values(self, values):
         try:
-            geometry_list = self._engine.pseudo_axes_values_set(values, self.units)
+            geometry_list = self._engine.pseudo_axis_values_set(values,
+                                                                self.units)
         except GLib.GError as ex:
             raise ValueError('Calculation failed (%s)' % ex)
 
@@ -808,15 +809,15 @@ class CalcRecip(object):
 
     @property
     def physical_axis_names(self):
-        return self._geometry.axes_names_get()
+        return self._geometry.axis_names_get()
 
     @property
     def physical_axis_values(self):
-        return self._geometry.axes_values_get(self._units)
+        return self._geometry.axis_values_get(self._units)
 
     @physical_axis_values.setter
     def physical_axis_values(self, positions):
-        return self._geometry.axes_values_set(positions, self._units)
+        return self._geometry.axis_values_set(positions, self._units)
 
     @property
     def physical_axes(self):
