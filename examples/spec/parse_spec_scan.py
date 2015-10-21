@@ -1,4 +1,4 @@
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 import re
 from pprint import pprint
 import pandas as pd
@@ -422,7 +422,7 @@ def get_commands(filename):
         lines = []
         try:
             while True:
-                line = f.next().strip()
+                line = next(f).strip()
                 if 'SIXC' in line:
                     if lines:
                         commands.append([command, lines])
@@ -491,6 +491,12 @@ def parsed_to_dataframe(parsed):
 if __name__ == "__main__":
     parsed = parse_spec_output('spec-h-scan.txt')
     df, meta = parsed_to_dataframe(parsed)
+    positions = defaultdict(list)
+    for delta, theta, gamma in zip(df['Delta'], df['Theta'], df['Gamma']):
+        positions['delta'].append(delta)
+        positions['theta'].append(theta)
+        positions['gamma'].append(gamma)
+    print(repr(dict(positions)))
     print(df)
     print("\nMETADATA"
           "\n--------")
